@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: VirtuPathAPI
+    env: native
+    buildCommand: "dotnet build"
+    startCommand: "dotnet run --project VirtuPathAPI/VirtuPathAPI.csproj"
+    branch: main
+    plan: free
+    autoDeploy: true
