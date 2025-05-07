@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/pluto/Desktop/virtupathai/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj": {}
+    "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj": {}
   },
   "projects": {
-    "/home/pluto/Desktop/virtupathai/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj": {
+    "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/pluto/Desktop/virtupathai/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
+        "projectUniqueName": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
         "projectName": "VirtuPathAPI",
-        "projectPath": "/home/pluto/Desktop/virtupathai/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
+        "projectPath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
         "packagesPath": "/home/pluto/.nuget/packages/",
-        "outputPath": "/home/pluto/Desktop/virtupathai/VirtuPathAPI/VirtuPathAPI/obj/",
+        "outputPath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/pluto/.nuget/NuGet/NuGet.Config"
