@@ -26,10 +26,10 @@ builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
 //------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
-    // ✅ Allow only the React/Next.js frontend in production
+    // ✅ Allow only the deployed frontend
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins("https://localhost:3000")
+        p.WithOrigins("https://virtu-path-ai.vercel.app") // 👈 Vercel domain here
          .AllowCredentials()
          .AllowAnyHeader()
          .AllowAnyMethod();
@@ -46,7 +46,7 @@ builder.Services.AddCors(options =>
 });
 
 //------------------------------------------------------------
-// 3)  SESSION  (default = 1-minute idle timeout)
+// 3)  SESSION
 //------------------------------------------------------------
 builder.Services.AddDistributedMemoryCache();
 
@@ -56,7 +56,7 @@ builder.Services.AddSession(opt =>
     opt.Cookie.HttpOnly = true;
     opt.Cookie.IsEssential = true;
     opt.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    opt.IdleTimeout = TimeSpan.FromMinutes(1); // short session
+    opt.IdleTimeout = TimeSpan.FromMinutes(1);
 });
 
 //------------------------------------------------------------
@@ -91,7 +91,7 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // ✅ Use stricter CORS in production
+    // ✅ Use Vercel CORS in production
     app.UseCors("AllowFrontend");
 }
 
@@ -100,7 +100,7 @@ app.UseHttpsRedirection();
 // --- Session must come BEFORE custom middleware -------------
 app.UseSession();
 
-app.UseStaticFiles(); // Enables serving wwwroot
+app.UseStaticFiles();
 
 //------------------------------------------------------------
 // 7)  “REMEMBER-ME” RE-HYDRATE MIDDLEWARE
