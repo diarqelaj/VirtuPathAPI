@@ -29,13 +29,13 @@ builder.Services.AddCors(options =>
     // ✅ Allow only the deployed frontend
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins("https://virtu-path-ai.vercel.app") // 👈 Vercel domain here
+        p.WithOrigins("https://virtu-path-ai.vercel.app") // 👈 Vercel domain
          .AllowCredentials()
          .AllowAnyHeader()
          .AllowAnyMethod();
     });
 
-    // ✅ Allow Swagger UI in development (open policy)
+    // ✅ Allow Swagger UI in development
     options.AddPolicy("AllowSwagger", p =>
     {
         p.WithOrigins("https://localhost:3000")
@@ -46,7 +46,7 @@ builder.Services.AddCors(options =>
 });
 
 //------------------------------------------------------------
-// 3)  SESSION
+// 3)  SESSION + COOKIE POLICY
 //------------------------------------------------------------
 builder.Services.AddDistributedMemoryCache();
 
@@ -56,7 +56,14 @@ builder.Services.AddSession(opt =>
     opt.Cookie.HttpOnly = true;
     opt.Cookie.IsEssential = true;
     opt.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    opt.IdleTimeout = TimeSpan.FromMinutes(1);
+    opt.Cookie.SameSite = SameSiteMode.None; // 👈 Required for cross-origin cookies
+    opt.IdleTimeout = TimeSpan.FromMinutes(30);
+});
+
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.None; // 👈 Required
+    options.Secure = CookieSecurePolicy.Always;
 });
 
 //------------------------------------------------------------
@@ -86,18 +93,17 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    // ✅ Allow Swagger CORS in dev
     app.UseCors("AllowSwagger");
 }
 else
 {
-    // ✅ Use Vercel CORS in production
     app.UseCors("AllowFrontend");
 }
 
 app.UseHttpsRedirection();
 
-// --- Session must come BEFORE custom middleware -------------
+// --- Apply cookie policy BEFORE session ---
+app.UseCookiePolicy();
 app.UseSession();
 
 app.UseStaticFiles();
