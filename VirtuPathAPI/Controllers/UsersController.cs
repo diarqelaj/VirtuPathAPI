@@ -243,10 +243,11 @@ namespace VirtuPathAPI.Controllers
                     user.UserID.ToString(),
                     new CookieOptions
                     {
-                        HttpOnly = true,
+                        HttpOnly = false,
                         Secure = true,
-                        SameSite = SameSiteMode.Lax,
-                        Expires = DateTimeOffset.UtcNow.AddMonths(1)
+                        SameSite = SameSiteMode.None, // ✅ Allow cross-site cookie usage
+                        Expires = DateTimeOffset.UtcNow.AddMonths(1),
+
                     });
             }
 
