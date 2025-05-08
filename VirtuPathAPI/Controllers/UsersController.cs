@@ -201,12 +201,12 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { success = true });
         }
         [HttpPost("verify-2fa")]
-        public async Task<IActionResult> VerifyTwoFactor([FromBody] TwoFactorRequest req)
+        public async Task<IActionResult> VerifyTwoFactor([FromBody] VerifyTwoFactorRequest req)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
             if (user == null) return Unauthorized(new { error = "User not found" });
 
-            // Check 2FA code + expiry
+            // ✅ Proper 2FA check
             if (user.TwoFactorCode != req.Code || user.TwoFactorCodeExpiresAt < DateTime.UtcNow)
             {
                 return Unauthorized(new { error = "Invalid or expired 2FA code" });
@@ -217,11 +217,11 @@ namespace VirtuPathAPI.Controllers
             var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
             if (ip == "::1") ip = "127.0.0.1";
             user.LastKnownIP = ip;
-            await _context.SaveChangesAsync();
 
-            // Optional: clear the 2FA code
+            // ✅ Clear 2FA values
             user.TwoFactorCode = null;
             user.TwoFactorCodeExpiresAt = null;
+
             await _context.SaveChangesAsync();
 
             if (req.RememberMe)
@@ -241,14 +241,22 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { userID = user.UserID });
         }
 
+        
+
 
         public class TwoFactorRequest
         {
             public string Email { get; set; }
             public string Code { get; set; }
-            public DateTime ExpiresAt { get; set; } // used when saving code
-            public bool RememberMe { get; set; }    // used when verifying
+            public DateTime ExpiresAt { get; set; } // ✅ used only when saving
         }
+        public class VerifyTwoFactorRequest
+        {
+            public string Email { get; set; }
+            public string Code { get; set; }
+            public bool RememberMe { get; set; }
+        }
+
 
 
         [HttpPost("login")]
