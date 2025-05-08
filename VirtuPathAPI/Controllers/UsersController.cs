@@ -200,13 +200,56 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { success = true });
         }
+        [HttpPost("verify-2fa")]
+        public async Task<IActionResult> VerifyTwoFactor([FromBody] TwoFactorRequest req)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+            if (user == null) return Unauthorized(new { error = "User not found" });
+
+            // Check 2FA code + expiry
+            if (user.TwoFactorCode != req.Code || user.TwoFactorCodeExpiresAt < DateTime.UtcNow)
+            {
+                return Unauthorized(new { error = "Invalid or expired 2FA code" });
+            }
+
+            HttpContext.Session.SetInt32("UserID", user.UserID);
+
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+            if (ip == "::1") ip = "127.0.0.1";
+            user.LastKnownIP = ip;
+            await _context.SaveChangesAsync();
+
+            // Optional: clear the 2FA code
+            user.TwoFactorCode = null;
+            user.TwoFactorCodeExpiresAt = null;
+            await _context.SaveChangesAsync();
+
+            if (req.RememberMe)
+            {
+                Response.Cookies.Append(
+                    "VirtuPathRemember",
+                    user.UserID.ToString(),
+                    new CookieOptions
+                    {
+                        HttpOnly = false,
+                        Secure = true,
+                        SameSite = SameSiteMode.None,
+                        Expires = DateTimeOffset.UtcNow.AddMonths(1),
+                    });
+            }
+
+            return Ok(new { userID = user.UserID });
+        }
+
 
         public class TwoFactorRequest
         {
             public string Email { get; set; }
             public string Code { get; set; }
-            public DateTime ExpiresAt { get; set; }
+            public DateTime ExpiresAt { get; set; } // used when saving code
+            public bool RememberMe { get; set; }    // used when verifying
         }
+
 
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
@@ -214,7 +257,7 @@ namespace VirtuPathAPI.Controllers
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
             if (user == null) return Unauthorized();
 
-            // ✅ Skip password check if password is empty and user is a Google user
+            // ✅ Google users can login without password
             if (!string.IsNullOrEmpty(req.Password))
             {
                 bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
@@ -222,13 +265,20 @@ namespace VirtuPathAPI.Controllers
             }
             else
             {
-                // Fix: Only allow passwordless login if user's passwordHash is empty
+                // Only allow passwordless if user is Google user (no password hash)
                 if (!string.IsNullOrEmpty(user.PasswordHash))
                 {
                     return Unauthorized(new { error = "Password required" });
                 }
             }
 
+            // ✅ Return early if user has 2FA enabled
+            if (user.IsTwoFactorEnabled)
+            {
+                return Ok(new { requires2FA = true });
+            }
+
+            // ✅ Normal login (no 2FA)
             HttpContext.Session.SetInt32("UserID", user.UserID);
 
             var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -245,14 +295,14 @@ namespace VirtuPathAPI.Controllers
                     {
                         HttpOnly = false,
                         Secure = true,
-                        SameSite = SameSiteMode.None, // ✅ Allow cross-site cookie usage
+                        SameSite = SameSiteMode.None,
                         Expires = DateTimeOffset.UtcNow.AddMonths(1),
-
                     });
             }
 
             return Ok(new { userID = user.UserID });
         }
+
 
 
 
