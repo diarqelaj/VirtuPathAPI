@@ -56,8 +56,10 @@ builder.Services.AddSession(opt =>
     opt.Cookie.HttpOnly = true;
     opt.Cookie.IsEssential = true;
     opt.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    opt.Cookie.SameSite = SameSiteMode.None; // 👈 ADD THIS
     opt.IdleTimeout = TimeSpan.FromMinutes(1);
 });
+
 
 //------------------------------------------------------------
 // 4)  MVC / Swagger
