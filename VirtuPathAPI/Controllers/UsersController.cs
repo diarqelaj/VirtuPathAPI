@@ -265,7 +265,7 @@ namespace VirtuPathAPI.Controllers
                 Expires = DateTimeOffset.UtcNow.AddDays(-1),
                 HttpOnly = true,
                 Secure = true,
-                SameSite = SameSiteMode.Lax
+                SameSite = SameSiteMode.None 
             });
 
             return Ok();
