@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "E7O710umxpzBbMKtM/tCY1e+/ITvsVl0rvo635Mb7Wo=",
+  "Hash": "vZI0yuVi/u+R/u4NoNSuXPvUH+I0cg4QvvYFsILMB/o=",
   "Source": "VirtuPathAPI",
   "BasePath": "_content/VirtuPathAPI",
   "Mode": "Default",
@@ -10,17 +10,17 @@
     {
       "Name": "VirtuPathAPI\\wwwroot",
       "Source": "VirtuPathAPI",
-      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "Pattern": "**"
     }
   ],
   "Assets": [
     {
-      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
+      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\profile-pictures\\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "RelativePath": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
       "AssetKind": "All",
@@ -34,10 +34,10 @@
       "OriginalItemSpec": "wwwroot\\profile-pictures\\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg"
     },
     {
-      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
+      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\profile-pictures\\55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "RelativePath": "profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
       "AssetKind": "All",
@@ -51,10 +51,10 @@
       "OriginalItemSpec": "wwwroot\\profile-pictures\\55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
     },
     {
-      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
+      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\profile-pictures\\b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "RelativePath": "profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
       "AssetKind": "All",
@@ -68,10 +68,10 @@
       "OriginalItemSpec": "wwwroot\\profile-pictures\\b1768b1b-06c4-4103-bd50-52ecfe728733.jpg"
     },
     {
-      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\uploads\\screenshots\\305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
+      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\uploads\\screenshots\\305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "RelativePath": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
       "AssetKind": "All",
@@ -85,10 +85,10 @@
       "OriginalItemSpec": "wwwroot\\uploads\\screenshots\\305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png"
     },
     {
-      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\uploads\\screenshots\\d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
+      "Identity": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\uploads\\screenshots\\d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "ContentRoot": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "RelativePath": "uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
       "AssetKind": "All",

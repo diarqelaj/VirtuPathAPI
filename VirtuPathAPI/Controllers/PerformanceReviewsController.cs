@@ -79,9 +79,9 @@ namespace VirtuPathAPI.Controllers
                 return NotFound("User not found.");
 
             if (user.CareerPathID == null)
-                return BadRequest("User does not have a CareerPath assigned.");
+               return BadRequest("User does not have a CareerPath assigned.");
 
-            int careerPathId = user.CareerPathID.Value;
+             int careerPathId = user.CareerPathID.Value;
 
 
 
@@ -160,9 +160,12 @@ namespace VirtuPathAPI.Controllers
         }
 
 
+
+
+        // GET: api/PerformanceReviews/progress/monthly?userId=1
         // GET: api/PerformanceReviews/progress/monthly?userId=1
         [HttpGet("progress/monthly")]
-        public async Task<IActionResult> GetMonthlyProgress([FromQuery] int userId)
+        public async Task<IActionResult> GetMonthlyProgress([FromQuery] int userId, [FromQuery] int day)
         {
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
@@ -173,16 +176,20 @@ namespace VirtuPathAPI.Controllers
 
             int careerPathId = user.CareerPathID.Value;
 
-            // Get all task completions for this user
+            // 🧠 Determine month from the current day
+            int month = ((day - 1) / 30) + 1;
+            int monthStart = (month - 1) * 30 + 1;
+            int monthEnd = monthStart + 29;
+
+            // 🧩 Fetch assigned tasks for this month range
+            var assignedTasks = await _context.DailyTasks
+                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= monthStart && dt.Day <= monthEnd)
+                .ToListAsync();
+
+            // ✅ Get user's completed task IDs
             var completedTaskIds = await _context.TaskCompletions
                 .Where(tc => tc.UserID == userId)
                 .Select(tc => tc.TaskID)
-                .Distinct()
-                .ToListAsync();
-
-            // Get all assigned tasks for this user's career path for the whole month (day 1–30)
-            var assignedTasks = await _context.DailyTasks
-                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 30)
                 .ToListAsync();
 
             var completedTasks = assignedTasks
@@ -191,40 +198,22 @@ namespace VirtuPathAPI.Controllers
 
             int tasksAssigned = assignedTasks.Count;
             int tasksCompleted = completedTasks.Count;
-
             int performanceScore = tasksAssigned == 0
                 ? 0
                 : (int)Math.Round((double)(tasksCompleted * 100) / tasksAssigned);
-
-            // Weekly breakdown (4 weeks)
-            var weeklyProgress = new List<object>();
-            for (int week = 0; week < 4; week++)
-            {
-                int startDay = week * 7 + 1;
-                int endDay = (week == 3) ? 30 : startDay + 6;
-
-                var weekTasks = assignedTasks.Where(t => t.Day >= startDay && t.Day <= endDay).ToList();
-                var weekCompleted = weekTasks.Where(t => completedTaskIds.Contains(t.TaskID)).ToList();
-
-                weeklyProgress.Add(new
-                {
-                    completed = weekCompleted.Count,
-                    total = weekTasks.Count
-                });
-            }
 
             return Ok(new
             {
                 UserID = userId,
                 CareerPathID = careerPathId,
-                Month = DateTime.UtcNow.Month,
-                Year = DateTime.UtcNow.Year,
-                TasksCompleted = tasksCompleted,
+                Month = month,
+                MonthRange = $"Days {monthStart}-{monthEnd}",
                 TasksAssigned = tasksAssigned,
-                PerformanceScore = performanceScore,
-                weeklyProgress
+                TasksCompleted = tasksCompleted,
+                PerformanceScore = performanceScore
             });
         }
+
 
         // POST: api/PerformanceReviews/generate-by-day?userId=1&day=3
         [HttpPost("generate-by-day")]

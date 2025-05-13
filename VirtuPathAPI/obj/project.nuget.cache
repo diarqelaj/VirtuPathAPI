@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "5KhPOzjPbRfbaaqZf0IzP3kDkArd2H0kd2uyxSY5fTNOiEjVxJYrvQBj0uw7chxDHtcVnRxEH0c50zuhyrqIdg==",
+  "dgSpecHash": "Jztx/Gc1JLZZM1bn43FiOQQb/N8tm22FJYiD55EkFvGLlJuIP1qe76Aq2LqFOHAlJ+eYMcX5yX0jpb5+kMOdFA==",
   "success": true,
-  "projectFilePath": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\VirtuPathAPI.csproj",
+  "projectFilePath": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\VirtuPathAPI.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\taula\\.nuget\\packages\\bcrypt.net-next\\4.0.3\\bcrypt.net-next.4.0.3.nupkg.sha512",
     "C:\\Users\\taula\\.nuget\\packages\\humanizer.core\\2.8.26\\humanizer.core.2.8.26.nupkg.sha512",
