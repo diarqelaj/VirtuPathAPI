@@ -165,8 +165,9 @@ namespace VirtuPathAPI.Controllers
         // GET: api/PerformanceReviews/progress/monthly?userId=1
         // GET: api/PerformanceReviews/progress/monthly?userId=1
         [HttpGet("progress/monthly")]
-        public async Task<IActionResult> GetMonthlyProgress([FromQuery] int userId, [FromQuery] int day)
+        public async Task<IActionResult> GetMonthlyProgress([FromQuery] int userId)
         {
+            // 1. Find the user
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
                 return NotFound("User not found.");
@@ -176,41 +177,55 @@ namespace VirtuPathAPI.Controllers
 
             int careerPathId = user.CareerPathID.Value;
 
-            // 🧠 Determine month from the current day
-            int month = ((day - 1) / 30) + 1;
-            int monthStart = (month - 1) * 30 + 1;
-            int monthEnd = monthStart + 29;
-
-            // 🧩 Fetch assigned tasks for this month range
-            var assignedTasks = await _context.DailyTasks
-                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= monthStart && dt.Day <= monthEnd)
+            // 2. Get all tasks for this career path within day 1–30 (assume fixed month range)
+            var allTasksInMonth = await _context.DailyTasks
+                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 30)
                 .ToListAsync();
 
-            // ✅ Get user's completed task IDs
+            // 3. Get user's completed task IDs
             var completedTaskIds = await _context.TaskCompletions
                 .Where(tc => tc.UserID == userId)
                 .Select(tc => tc.TaskID)
                 .ToListAsync();
 
-            var completedTasks = assignedTasks
+            // 4. Determine total assigned and completed tasks for the entire month
+            var completedTasks = allTasksInMonth
                 .Where(t => completedTaskIds.Contains(t.TaskID))
                 .ToList();
 
-            int tasksAssigned = assignedTasks.Count;
-            int tasksCompleted = completedTasks.Count;
-            int performanceScore = tasksAssigned == 0
-                ? 0
-                : (int)Math.Round((double)(tasksCompleted * 100) / tasksAssigned);
+            int totalAssigned = allTasksInMonth.Count;
+            int totalCompleted = completedTasks.Count;
+            int performanceScore = totalAssigned == 0 ? 0 : (int)Math.Round((double)(totalCompleted * 100) / totalAssigned);
 
+            // 5. Build weekly progress breakdown
+            var weeklyProgress = new List<object>();
+            for (int i = 0; i < 5; i++)
+            {
+                int startDay = i * 7 + 1;
+                int endDay = Math.Min(startDay + 6, 30);
+
+                var weekTasks = allTasksInMonth.Where(t => t.Day >= startDay && t.Day <= endDay).ToList();
+                var weekCompleted = weekTasks.Where(t => completedTaskIds.Contains(t.TaskID)).ToList();
+
+                weeklyProgress.Add(new
+                {
+                    Week = $"Week {i + 1}",
+                    Completed = weekCompleted.Count,
+                    Total = weekTasks.Count
+                });
+            }
+
+            // 6. Return structured response
             return Ok(new
             {
                 UserID = userId,
                 CareerPathID = careerPathId,
-                Month = month,
-                MonthRange = $"Days {monthStart}-{monthEnd}",
-                TasksAssigned = tasksAssigned,
-                TasksCompleted = tasksCompleted,
-                PerformanceScore = performanceScore
+                Month = DateTime.UtcNow.Month,
+                Year = DateTime.UtcNow.Year,
+                TasksAssigned = totalAssigned,
+                TasksCompleted = totalCompleted,
+                PerformanceScore = performanceScore,
+                WeeklyProgress = weeklyProgress
             });
         }
 
