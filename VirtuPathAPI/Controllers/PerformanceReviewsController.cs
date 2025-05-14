@@ -228,6 +228,61 @@ namespace VirtuPathAPI.Controllers
                 WeeklyProgress = weeklyProgress
             });
         }
+        [HttpGet("progress/alltime")]
+        public async Task<IActionResult> GetAllTimeProgress([FromQuery] int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found.");
+
+            if (user.CareerPathID == null)
+                return BadRequest("User does not have a CareerPath assigned.");
+
+            int careerPathId = user.CareerPathID.Value;
+
+            var allTasks = await _context.DailyTasks
+                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 360)
+                .ToListAsync();
+
+            var completedTaskIds = await _context.TaskCompletions
+                .Where(tc => tc.UserID == userId)
+                .Select(tc => tc.TaskID)
+                .ToListAsync();
+
+            var monthlyProgress = new List<object>();
+
+            for (int month = 0; month < 12; month++)
+            {
+                int startDay = month * 30 + 1;
+                int endDay = startDay + 29;
+
+                var monthTasks = allTasks
+                    .Where(dt => dt.Day >= startDay && dt.Day <= endDay)
+                    .ToList();
+
+                var completedTasks = monthTasks
+                    .Where(t => completedTaskIds.Contains(t.TaskID))
+                    .ToList();
+
+                int tasksAssigned = monthTasks.Count;
+                int tasksCompleted = completedTasks.Count;
+
+                monthlyProgress.Add(new
+                {
+                    Month = $"Month {month + 1}",
+                    Days = $"{startDay}-{endDay}",
+                    Completed = tasksCompleted,
+                    Total = tasksAssigned
+                });
+            }
+
+            return Ok(new
+            {
+                UserID = userId,
+                CareerPathID = careerPathId,
+                MonthlyProgress = monthlyProgress
+            });
+        }
 
 
         // POST: api/PerformanceReviews/generate-by-day?userId=1&day=3
@@ -315,7 +370,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(review);
         }
-
+      
         // POST: api/PerformanceReviews/generate-monthly?userId=1
         [HttpPost("generate-monthly")]
         public async Task<IActionResult> GenerateMonthlyPerformance([FromQuery] int userId)

@@ -24,7 +24,15 @@ namespace VirtuPathAPI.Controllers
             return Ok(await _context.DailyTasks.ToListAsync());
         }
 
+        [HttpGet("bycareerweek")]
+        public async Task<IActionResult> GetWeeklyTasks([FromQuery] int careerPathId, [FromQuery] int startDay)
+        {
+            var tasks = await _context.DailyTasks
+                .Where(t => t.CareerPathID == careerPathId && t.Day >= startDay && t.Day < startDay + 7)
+                .ToListAsync();
 
+            return Ok(tasks);
+        }
 
         [HttpGet("bycareerandday")]
         public async Task<ActionResult<IEnumerable<DailyTask>>> GetByCareerPathAndDay([FromQuery] int careerPathId, [FromQuery] int day)
