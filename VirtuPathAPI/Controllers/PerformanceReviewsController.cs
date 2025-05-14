@@ -163,39 +163,127 @@ namespace VirtuPathAPI.Controllers
 
 
         // GET: api/PerformanceReviews/progress/monthly?userId=1
+        // GET: api/PerformanceReviews/progress/monthly?userId=1
         [HttpGet("progress/monthly")]
         public async Task<IActionResult> GetMonthlyProgress([FromQuery] int userId)
         {
+            // 1. Find the user
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found.");
+
+            if (user.CareerPathID == null)
+                return BadRequest("User does not have a CareerPath assigned.");
+
+            int careerPathId = user.CareerPathID.Value;
+
+            // 2. Get all tasks for this career path within day 1–30 (assume fixed month range)
+            var allTasksInMonth = await _context.DailyTasks
+                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 30)
+                .ToListAsync();
+
+            // 3. Get user's completed task IDs
             var completedTaskIds = await _context.TaskCompletions
                 .Where(tc => tc.UserID == userId)
                 .Select(tc => tc.TaskID)
-                .Distinct()
                 .ToListAsync();
 
-            var monthlyTasks = await _context.DailyTasks
-                .Where(dt => dt.Day >= 1 && dt.Day <= 30)  // For simplicity, assuming 30 days in month
-                .ToListAsync();
+            // 4. Determine total assigned and completed tasks for the entire month
+            var completedTasks = allTasksInMonth
+                .Where(t => completedTaskIds.Contains(t.TaskID))
+                .ToList();
 
-            int careerPathId = monthlyTasks.FirstOrDefault()?.CareerPathID ?? 0;
+            int totalAssigned = allTasksInMonth.Count;
+            int totalCompleted = completedTasks.Count;
+            int performanceScore = totalAssigned == 0 ? 0 : (int)Math.Round((double)(totalCompleted * 100) / totalAssigned);
 
-            var assignedTasks = monthlyTasks.Where(dt => dt.CareerPathID == careerPathId).ToList();
-            var completedTasks = assignedTasks.Where(t => completedTaskIds.Contains(t.TaskID)).ToList();
+            // 5. Build weekly progress breakdown
+            var weeklyProgress = new List<object>();
+            for (int i = 0; i < 5; i++)
+            {
+                int startDay = i * 7 + 1;
+                int endDay = Math.Min(startDay + 6, 30);
 
-            int tasksAssigned = assignedTasks.Count;
-            int tasksCompleted = completedTasks.Count;
-            int performanceScore = tasksAssigned == 0 ? 0 : (int)Math.Round((double)(tasksCompleted * 100) / tasksAssigned);
+                var weekTasks = allTasksInMonth.Where(t => t.Day >= startDay && t.Day <= endDay).ToList();
+                var weekCompleted = weekTasks.Where(t => completedTaskIds.Contains(t.TaskID)).ToList();
 
+                weeklyProgress.Add(new
+                {
+                    Week = $"Week {i + 1}",
+                    Completed = weekCompleted.Count,
+                    Total = weekTasks.Count
+                });
+            }
+
+            // 6. Return structured response
             return Ok(new
             {
                 UserID = userId,
                 CareerPathID = careerPathId,
                 Month = DateTime.UtcNow.Month,
                 Year = DateTime.UtcNow.Year,
-                TasksAssigned = tasksAssigned,
-                TasksCompleted = tasksCompleted,
-                PerformanceScore = performanceScore
+                TasksAssigned = totalAssigned,
+                TasksCompleted = totalCompleted,
+                PerformanceScore = performanceScore,
+                WeeklyProgress = weeklyProgress
             });
         }
+        [HttpGet("progress/alltime")]
+        public async Task<IActionResult> GetAllTimeProgress([FromQuery] int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found.");
+
+            if (user.CareerPathID == null)
+                return BadRequest("User does not have a CareerPath assigned.");
+
+            int careerPathId = user.CareerPathID.Value;
+
+            var allTasks = await _context.DailyTasks
+                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 360)
+                .ToListAsync();
+
+            var completedTaskIds = await _context.TaskCompletions
+                .Where(tc => tc.UserID == userId)
+                .Select(tc => tc.TaskID)
+                .ToListAsync();
+
+            var monthlyProgress = new List<object>();
+
+            for (int month = 0; month < 12; month++)
+            {
+                int startDay = month * 30 + 1;
+                int endDay = startDay + 29;
+
+                var monthTasks = allTasks
+                    .Where(dt => dt.Day >= startDay && dt.Day <= endDay)
+                    .ToList();
+
+                var completedTasks = monthTasks
+                    .Where(t => completedTaskIds.Contains(t.TaskID))
+                    .ToList();
+
+                int tasksAssigned = monthTasks.Count;
+                int tasksCompleted = completedTasks.Count;
+
+                monthlyProgress.Add(new
+                {
+                    Month = $"Month {month + 1}",
+                    Days = $"{startDay}-{endDay}",
+                    Completed = tasksCompleted,
+                    Total = tasksAssigned
+                });
+            }
+
+            return Ok(new
+            {
+                UserID = userId,
+                CareerPathID = careerPathId,
+                MonthlyProgress = monthlyProgress
+            });
+        }
+
 
         // POST: api/PerformanceReviews/generate-by-day?userId=1&day=3
         [HttpPost("generate-by-day")]
@@ -282,7 +370,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(review);
         }
-
+      
         // POST: api/PerformanceReviews/generate-monthly?userId=1
         [HttpPost("generate-monthly")]
         public async Task<IActionResult> GenerateMonthlyPerformance([FromQuery] int userId)
