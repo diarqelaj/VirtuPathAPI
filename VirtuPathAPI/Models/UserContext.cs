@@ -10,5 +10,7 @@ namespace VirtuPathAPI.Models
         public DbSet<User> Users { get; set; }
         public DbSet<UserSubscription> UserSubscriptions { get; set; }
 
+        public DbSet<UserFriend> UserFriends { get; set; }
+
     }
 }

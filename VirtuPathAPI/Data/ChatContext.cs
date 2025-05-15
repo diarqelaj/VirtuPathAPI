@@ -2,12 +2,13 @@
 using VirtuPathAPI.Models;
 namespace VirtuPathAPI.Data
 {
+    
+        public class ChatContext : DbContext
+        {
+            public ChatContext(DbContextOptions<ChatContext> options) : base(options) { }
 
-    public class ChatContext : DbContext
-    {
-        public ChatContext(DbContextOptions<ChatContext> options) : base(options) { }
-
-        public DbSet<Message> Messages { get; set; }
-    }
+            public DbSet<Message> Messages { get; set; }
+        }
+    
 
 }
