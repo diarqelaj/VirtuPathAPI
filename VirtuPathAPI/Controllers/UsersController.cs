@@ -33,6 +33,20 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
             return user;
         }
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchUsersByName([FromQuery] string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return BadRequest("Name is required.");
+
+            var matches = await _context.Users
+                .Where(u => u.FullName.ToLower().Contains(name.ToLower()))
+                .Select(u => new { u.UserID, u.FullName })
+                .ToListAsync();
+
+            return Ok(matches);
+        }
+
         
         // ✅ POST /api/users — Register new user with hashed password
         [HttpPost]
