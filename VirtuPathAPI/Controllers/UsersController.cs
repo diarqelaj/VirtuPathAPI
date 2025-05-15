@@ -41,11 +41,16 @@ namespace VirtuPathAPI.Controllers
 
             var matches = await _context.Users
                 .Where(u => u.FullName.ToLower().Contains(name.ToLower()))
-                .Select(u => new { u.UserID, u.FullName })
+                .Select(u => new {
+                    u.UserID,
+                    u.FullName,
+                    u.ProfilePictureUrl // <- this is required for frontend to show image
+                })
                 .ToListAsync();
 
             return Ok(matches);
         }
+
 
         
         // ✅ POST /api/users — Register new user with hashed password
