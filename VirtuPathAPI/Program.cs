@@ -4,6 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VirtuPathAPI.Models;
+using VirtuPathAPI.Hubs; // 👈 Add this for ChatHub
+using Microsoft.AspNetCore.SignalR;
+using VirtuPathAPI.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +23,10 @@ builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs)
 builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs)); // 👈 Add this for chat messages
+
+builder.Services.AddDbContext<ChatContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 //------------------------------------------------------------
 // 2)  CORS Policies
@@ -29,7 +36,7 @@ builder.Services.AddCors(options =>
     // ✅ Allow only the deployed frontend
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins("https://virtu-path-ai.vercel.app") // 👈 Vercel domain
+        p.WithOrigins("https://virtu-path-ai.vercel.app")
          .AllowCredentials()
          .AllowAnyHeader()
          .AllowAnyMethod();
@@ -57,15 +64,15 @@ builder.Services.AddSession(opt =>
     opt.Cookie.IsEssential = true;
     opt.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
-    opt.Cookie.SameSite = SameSiteMode.None; // 👈 Required for cross-origin cookies
+    opt.Cookie.SameSite = SameSiteMode.None;
     opt.IdleTimeout = TimeSpan.FromMinutes(360);
 });
 
-
-
 //------------------------------------------------------------
-// 4)  MVC / Swagger
+// 4)  MVC / Swagger / SignalR
 //------------------------------------------------------------
+builder.Services.AddSignalR(); // 👈 Add SignalR support
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -99,7 +106,6 @@ else
 
 app.UseHttpsRedirection();
 
-// --- Apply cookie policy BEFORE session ---
 app.UseCookiePolicy();
 app.UseSession();
 
@@ -125,5 +131,10 @@ app.Use(async (ctx, next) =>
 app.UseAuthorization();
 
 app.MapControllers();
+
+//------------------------------------------------------------
+// 8)  MAP SIGNALR HUB
+//------------------------------------------------------------
+app.MapHub<ChatHub>("/chathub"); // 👈 SignalR ChatHub endpoint
 
 app.Run();
