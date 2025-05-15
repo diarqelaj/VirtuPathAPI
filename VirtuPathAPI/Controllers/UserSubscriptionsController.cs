@@ -80,6 +80,18 @@ namespace VirtuPathAPI.Controllers
 
             return NoContent();
         }
+        [HttpGet("startdate")]
+        public async Task<ActionResult<DateTime>> GetStartDate(int userId, int careerPathId)
+        {
+            var subscription = await _context.UserSubscriptions
+                .FirstOrDefaultAsync(x => x.UserID == userId && x.CareerPathID == careerPathId);
+
+            if (subscription == null)
+                return NotFound("No subscription found");
+
+            return Ok(subscription.StartDate);
+        }
+
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUserSubscription(int id)
