@@ -15,10 +15,9 @@ namespace VirtuPathAPI.Controllers
             _context = context;
         }
 
-        // ✅ Send a follow request (not accepted yet)
+        // ✅ Send a follow request
         [HttpPost("follow")]
         public async Task<IActionResult> FollowUser([FromQuery] int followerId, [FromQuery] int followedId)
-
         {
             if (followerId == followedId)
                 return BadRequest("You cannot follow yourself.");
@@ -29,15 +28,22 @@ namespace VirtuPathAPI.Controllers
             if (exists)
                 return BadRequest("Follow request already exists.");
 
+            var followedUser = await _context.Users.FindAsync(followedId);
+            if (followedUser == null)
+                return NotFound("User to follow not found.");
+
+            bool autoAccept = !followedUser.IsProfilePrivate;
+
             _context.UserFriends.Add(new UserFriend
             {
                 FollowerId = followerId,
                 FollowedId = followedId,
-                IsAccepted = false
+                IsAccepted = autoAccept
             });
 
             await _context.SaveChangesAsync();
-            return Ok("Follow request sent.");
+
+            return Ok(autoAccept ? "Followed user." : "Follow request sent.");
         }
 
         // ✅ Accept a follow request
@@ -56,7 +62,7 @@ namespace VirtuPathAPI.Controllers
             return Ok("Follow request accepted.");
         }
 
-        // ✅ Remove a follow (unfollow or reject)
+        // ✅ Remove follow/unfollow/reject
         [HttpDelete("remove")]
         public async Task<IActionResult> RemoveFollow([FromQuery] int followerId, [FromQuery] int followedId)
         {
@@ -73,6 +79,7 @@ namespace VirtuPathAPI.Controllers
             return NotFound("No follow relationship found.");
         }
 
+        // ✅ Followers (accepted only)
         [HttpGet("followers/{userId}")]
         public async Task<IActionResult> GetFollowers(int userId)
         {
@@ -89,6 +96,7 @@ namespace VirtuPathAPI.Controllers
             return Ok(followers);
         }
 
+        // ✅ Following (accepted only)
         [HttpGet("following/{userId}")]
         public async Task<IActionResult> GetFollowing(int userId)
         {
@@ -105,18 +113,24 @@ namespace VirtuPathAPI.Controllers
             return Ok(following);
         }
 
-                // ✅ List pending follow requests sent TO this user
+        // ✅ Pending requests sent TO this user
         [HttpGet("requests/incoming/{userId}")]
         public async Task<IActionResult> GetIncomingFollowRequests(int userId)
         {
             var incoming = await _context.UserFriends
                 .Where(f => f.FollowedId == userId && !f.IsAccepted)
+                .Include(f => f.Follower)
+                .Select(f => new {
+                    f.Follower.UserID,
+                    f.Follower.FullName,
+                    f.Follower.ProfilePictureUrl
+                })
                 .ToListAsync();
 
             return Ok(incoming);
         }
 
-        // ✅ Get mutual friends (real friends)
+        // ✅ Mutuals (real friends)
         [HttpGet("mutual/{userId}")]
         public async Task<IActionResult> GetMutualFriends(int userId)
         {
@@ -130,7 +144,12 @@ namespace VirtuPathAPI.Controllers
                     acceptedFollows.Contains(f.FollowerId) &&
                     f.FollowedId == userId &&
                     f.IsAccepted)
-                .Select(f => f.FollowerId)
+                .Include(f => f.Follower)
+                .Select(f => new {
+                    f.Follower.UserID,
+                    f.Follower.FullName,
+                    f.Follower.ProfilePictureUrl
+                })
                 .ToListAsync();
 
             return Ok(mutuals);
