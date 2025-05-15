@@ -45,7 +45,8 @@ builder.Services.AddCors(options =>
     // ✅ Allow Swagger UI in development
     options.AddPolicy("AllowSwagger", p =>
     {
-        p.WithOrigins("https://localhost:3000")
+        p.WithOrigins("https://localhost:7072", "https://localhost:3000", "http://localhost:3000")
+
          .AllowAnyHeader()
          .AllowAnyMethod()
          .AllowCredentials();

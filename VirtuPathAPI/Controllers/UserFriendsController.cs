@@ -17,7 +17,8 @@ namespace VirtuPathAPI.Controllers
 
         // ✅ Send a follow request (not accepted yet)
         [HttpPost("follow")]
-        public async Task<IActionResult> FollowUser(int followerId, int followedId)
+        public async Task<IActionResult> FollowUser([FromQuery] int followerId, [FromQuery] int followedId)
+
         {
             if (followerId == followedId)
                 return BadRequest("You cannot follow yourself.");
@@ -41,7 +42,7 @@ namespace VirtuPathAPI.Controllers
 
         // ✅ Accept a follow request
         [HttpPost("accept")]
-        public async Task<IActionResult> AcceptFollow(int followerId, int followedId)
+        public async Task<IActionResult> AcceptFollow([FromQuery] int followerId, [FromQuery] int followedId)
         {
             var request = await _context.UserFriends.FirstOrDefaultAsync(f =>
                 f.FollowerId == followerId && f.FollowedId == followedId);
@@ -57,7 +58,7 @@ namespace VirtuPathAPI.Controllers
 
         // ✅ Remove a follow (unfollow or reject)
         [HttpDelete("remove")]
-        public async Task<IActionResult> RemoveFollow(int followerId, int followedId)
+        public async Task<IActionResult> RemoveFollow([FromQuery] int followerId, [FromQuery] int followedId)
         {
             var relation = await _context.UserFriends.FirstOrDefaultAsync(f =>
                 f.FollowerId == followerId && f.FollowedId == followedId);
