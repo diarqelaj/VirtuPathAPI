@@ -73,29 +73,38 @@ namespace VirtuPathAPI.Controllers
             return NotFound("No follow relationship found.");
         }
 
-        // ✅ Get list of users this user follows (following list)
-        [HttpGet("following/{userId}")]
-        public async Task<IActionResult> GetFollowing(int userId)
-        {
-            var following = await _context.UserFriends
-                .Where(f => f.FollowerId == userId && f.IsAccepted)
-                .Select(f => f.FollowedId)
-                .ToListAsync();
-
-            return Ok(following);
-        }
-
-        // ✅ Get list of users who follow this user
         [HttpGet("followers/{userId}")]
         public async Task<IActionResult> GetFollowers(int userId)
         {
             var followers = await _context.UserFriends
                 .Where(f => f.FollowedId == userId && f.IsAccepted)
-                .Select(f => f.FollowerId)
+                .Include(f => f.Follower)
+                .Select(f => new {
+                    f.Follower.UserID,
+                    f.Follower.FullName,
+                    f.Follower.ProfilePictureUrl
+                })
                 .ToListAsync();
 
             return Ok(followers);
         }
+
+        [HttpGet("following/{userId}")]
+        public async Task<IActionResult> GetFollowing(int userId)
+        {
+            var following = await _context.UserFriends
+                .Where(f => f.FollowerId == userId && f.IsAccepted)
+                .Include(f => f.Followed)
+                .Select(f => new {
+                    f.Followed.UserID,
+                    f.Followed.FullName,
+                    f.Followed.ProfilePictureUrl
+                })
+                .ToListAsync();
+
+            return Ok(following);
+        }
+
                 // ✅ List pending follow requests sent TO this user
         [HttpGet("requests/incoming/{userId}")]
         public async Task<IActionResult> GetIncomingFollowRequests(int userId)
