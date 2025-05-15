@@ -15,64 +15,105 @@ namespace VirtuPathAPI.Controllers
             _context = context;
         }
 
-        // ✅ Add friendship (2-way)
-        [HttpPost("add")]
-        public async Task<IActionResult> AddFriendship(int userId, int friendId)
+        // ✅ Send a follow request (not accepted yet)
+        [HttpPost("follow")]
+        public async Task<IActionResult> FollowUser(int followerId, int followedId)
         {
-            if (userId == friendId)
-                return BadRequest("You cannot add yourself as a friend.");
+            if (followerId == followedId)
+                return BadRequest("You cannot follow yourself.");
 
-            // Optional: Validate users exist
-            var userExists = await _context.Users.AnyAsync(u => u.UserID == userId);
-            var friendExists = await _context.Users.AnyAsync(u => u.UserID == friendId);
-
-            if (!userExists || !friendExists)
-                return NotFound("One or both users not found.");
-
-            // Check if already friends
             bool exists = await _context.UserFriends.AnyAsync(f =>
-                f.UserId == userId && f.FriendId == friendId);
+                f.FollowerId == followerId && f.FollowedId == followedId);
 
             if (exists)
-                return BadRequest("Already friends.");
+                return BadRequest("Follow request already exists.");
 
-            _context.UserFriends.Add(new UserFriend { UserId = userId, FriendId = friendId });
-            _context.UserFriends.Add(new UserFriend { UserId = friendId, FriendId = userId });
+            _context.UserFriends.Add(new UserFriend
+            {
+                FollowerId = followerId,
+                FollowedId = followedId,
+                IsAccepted = false
+            });
 
             await _context.SaveChangesAsync();
-
-            return Ok(new {
-                message = "Friendship added.",
-                userId,
-                friendId
-            });
+            return Ok("Follow request sent.");
         }
 
-
-        // ✅ Get all friends for a user
-        [HttpGet("{userId}")]
-        public async Task<IActionResult> GetFriends(int userId)
+        // ✅ Accept a follow request
+        [HttpPost("accept")]
+        public async Task<IActionResult> AcceptFollow(int followerId, int followedId)
         {
-            var friendIds = await _context.UserFriends
-                .Where(f => f.UserId == userId)
-                .Select(f => f.FriendId)
+            var request = await _context.UserFriends.FirstOrDefaultAsync(f =>
+                f.FollowerId == followerId && f.FollowedId == followedId);
+
+            if (request == null)
+                return NotFound("Follow request not found.");
+
+            request.IsAccepted = true;
+            await _context.SaveChangesAsync();
+
+            return Ok("Follow request accepted.");
+        }
+
+        // ✅ Remove a follow (unfollow or reject)
+        [HttpDelete("remove")]
+        public async Task<IActionResult> RemoveFollow(int followerId, int followedId)
+        {
+            var relation = await _context.UserFriends.FirstOrDefaultAsync(f =>
+                f.FollowerId == followerId && f.FollowedId == followedId);
+
+            if (relation != null)
+            {
+                _context.UserFriends.Remove(relation);
+                await _context.SaveChangesAsync();
+                return Ok("Follow removed.");
+            }
+
+            return NotFound("No follow relationship found.");
+        }
+
+        // ✅ Get list of users this user follows (following list)
+        [HttpGet("following/{userId}")]
+        public async Task<IActionResult> GetFollowing(int userId)
+        {
+            var following = await _context.UserFriends
+                .Where(f => f.FollowerId == userId && f.IsAccepted)
+                .Select(f => f.FollowedId)
                 .ToListAsync();
 
-            return Ok(friendIds); // or fetch full user data if needed
+            return Ok(following);
         }
 
-        // ✅ Remove friendship (2-way)
-        [HttpDelete("remove")]
-        public async Task<IActionResult> RemoveFriendship(int userId, int friendId)
+        // ✅ Get list of users who follow this user
+        [HttpGet("followers/{userId}")]
+        public async Task<IActionResult> GetFollowers(int userId)
         {
-            var f1 = await _context.UserFriends.FirstOrDefaultAsync(f => f.UserId == userId && f.FriendId == friendId);
-            var f2 = await _context.UserFriends.FirstOrDefaultAsync(f => f.UserId == friendId && f.FriendId == userId);
+            var followers = await _context.UserFriends
+                .Where(f => f.FollowedId == userId && f.IsAccepted)
+                .Select(f => f.FollowerId)
+                .ToListAsync();
 
-            if (f1 != null) _context.UserFriends.Remove(f1);
-            if (f2 != null) _context.UserFriends.Remove(f2);
+            return Ok(followers);
+        }
 
-            await _context.SaveChangesAsync();
-            return Ok("Friendship removed.");
+        // ✅ Get mutual friends (real friends)
+        [HttpGet("mutual/{userId}")]
+        public async Task<IActionResult> GetMutualFriends(int userId)
+        {
+            var acceptedFollows = await _context.UserFriends
+                .Where(f => f.FollowerId == userId && f.IsAccepted)
+                .Select(f => f.FollowedId)
+                .ToListAsync();
+
+            var mutuals = await _context.UserFriends
+                .Where(f =>
+                    acceptedFollows.Contains(f.FollowerId) &&
+                    f.FollowedId == userId &&
+                    f.IsAccepted)
+                .Select(f => f.FollowerId)
+                .ToListAsync();
+
+            return Ok(mutuals);
         }
     }
 }

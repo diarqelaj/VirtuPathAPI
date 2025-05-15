@@ -3,7 +3,9 @@
     public class UserFriend
     {
         public int Id { get; set; }
-        public int UserId { get; set; }
-        public int FriendId { get; set; }
+        public int FollowerId { get; set; }     // who followed
+        public int FollowedId { get; set; }     // who was followed
+        public bool IsAccepted { get; set; } = false;
+        public DateTime RequestedAt { get; set; } = DateTime.UtcNow;
     }
 }
