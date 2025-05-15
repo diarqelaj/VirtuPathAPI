@@ -113,15 +113,14 @@ namespace VirtuPathAPI.Controllers
             return Ok(following);
         }
 
-        // ✅ Pending requests sent TO this user
-        [HttpGet("requests/incoming/{userId}")]
+       [HttpGet("requests/incoming/{userId}")]
         public async Task<IActionResult> GetIncomingFollowRequests(int userId)
         {
             var incoming = await _context.UserFriends
                 .Where(f => f.FollowedId == userId && !f.IsAccepted)
                 .Include(f => f.Follower)
                 .Select(f => new {
-                    f.Follower.UserID,
+                    FollowerId = f.Follower.UserID, // ✅ match frontend naming
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
@@ -129,6 +128,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(incoming);
         }
+
 
         // ✅ Mutuals (real friends)
         [HttpGet("mutual/{userId}")]
