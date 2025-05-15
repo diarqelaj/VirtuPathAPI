@@ -130,6 +130,153 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "Profile picture deleted." });
         }
+        [HttpPost("upload-cover")]
+        public async Task<IActionResult> UploadCoverImage([FromForm] IFormFile file, [FromForm] int userId)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file uploaded.");
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found.");
+
+            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "cover-images");
+            if (!Directory.Exists(uploadsFolder))
+                Directory.CreateDirectory(uploadsFolder);
+
+            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            var imageUrl = $"/cover-images/{fileName}";
+            user.CoverImageUrl = imageUrl;
+
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { coverImageUrl = imageUrl });
+        }
+        [HttpDelete("delete-cover-image")]
+        public async Task<IActionResult> DeleteCoverImage([FromQuery] int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound("User not found.");
+
+            if (!string.IsNullOrEmpty(user.CoverImageUrl))
+            {
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.CoverImageUrl.TrimStart('/'));
+                if (System.IO.File.Exists(filePath))
+                {
+                    System.IO.File.Delete(filePath);
+                }
+
+                user.CoverImageUrl = null;
+                _context.Users.Update(user);
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { message = "Cover image deleted." });
+        }
+       [HttpPost("bio")]
+        public async Task<IActionResult> AddBio([FromBody] TextUpdateRequest req)
+        {
+            var user = await _context.Users.FindAsync(req.UserId);
+            if (user == null) return NotFound("User not found.");
+
+            user.Bio = req.Text;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Bio added." });
+        }
+
+        [HttpPut("bio")]
+        public async Task<IActionResult> UpdateBio([FromBody] TextUpdateRequest req)
+        {
+            var user = await _context.Users.FindAsync(req.UserId);
+            if (user == null) return NotFound("User not found.");
+
+            user.Bio = req.Text;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Bio updated." });
+        }
+
+        [HttpDelete("bio")]
+        public async Task<IActionResult> DeleteBio([FromQuery] int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound("User not found.");
+
+            user.Bio = null;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Bio deleted." });
+        }
+        [HttpPost("about")]
+        public async Task<IActionResult> AddAbout([FromBody] TextUpdateRequest req)
+        {
+            var user = await _context.Users.FindAsync(req.UserId);
+            if (user == null) return NotFound("User not found.");
+
+            user.About = req.Text;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "About added." });
+        }
+        [HttpPut("about")]
+        public async Task<IActionResult> UpdateAbout([FromBody] TextUpdateRequest req)
+        {
+            var user = await _context.Users.FindAsync(req.UserId);
+            if (user == null) return NotFound("User not found.");
+
+            user.About = req.Text;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "About updated." });
+        }
+        [HttpDelete("about")]
+        public async Task<IActionResult> DeleteAbout([FromQuery] int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound("User not found.");
+
+            user.About = null;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "About deleted." });
+        }
+        [HttpPut("privacy")]
+        public async Task<IActionResult> ToggleProfilePrivacy([FromBody] PrivacyToggleRequest req)
+        {
+            var user = await _context.Users.FindAsync(req.UserId);
+            if (user == null) return NotFound("User not found.");
+
+            user.IsProfilePrivate = req.IsPrivate;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Profile privacy {(req.IsPrivate ? "enabled" : "disabled")}.", isPrivate = user.IsProfilePrivate });
+        }
+
+        public class PrivacyToggleRequest
+        {
+            public int UserId { get; set; }
+            public bool IsPrivate { get; set; }
+        }
+
+
+
+
+
+
+
+
+        
+
+
         [HttpGet("notifications/{id}")]
         public async Task<IActionResult> GetNotificationSettings(int id)
         {
@@ -259,6 +406,12 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { userID = user.UserID });
         }
+        public class TextUpdateRequest
+        {
+            public int UserId { get; set; }
+            public string? Text { get; set; }
+        }
+
 
         
 

@@ -17,6 +17,12 @@ namespace VirtuPathAPI.Models
 
     // Profile
     public string? ProfilePictureUrl { get; set; }
+    public string? CoverImageUrl { get; set; }
+    public string? Bio { get; set; } // 🆕 Short bio (1–2 sentences)
+    public string? About { get; set; } // 🆕 More detailed personal info
+
+    public bool IsProfilePrivate { get; set; } = false;
+
     public bool ProductUpdates { get; set; } = false;
     public bool CareerTips { get; set; } = false;
     public bool NewCareerPathAlerts { get; set; } = false;
