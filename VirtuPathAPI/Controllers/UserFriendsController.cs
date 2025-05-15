@@ -95,6 +95,16 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(followers);
         }
+                // ✅ List pending follow requests sent TO this user
+        [HttpGet("requests/incoming/{userId}")]
+        public async Task<IActionResult> GetIncomingFollowRequests(int userId)
+        {
+            var incoming = await _context.UserFriends
+                .Where(f => f.FollowedId == userId && !f.IsAccepted)
+                .ToListAsync();
+
+            return Ok(incoming);
+        }
 
         // ✅ Get mutual friends (real friends)
         [HttpGet("mutual/{userId}")]
