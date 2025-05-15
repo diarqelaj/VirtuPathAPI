@@ -19,6 +19,16 @@ namespace VirtuPathAPI.Controllers
         [HttpPost("add")]
         public async Task<IActionResult> AddFriendship(int userId, int friendId)
         {
+            if (userId == friendId)
+                return BadRequest("You cannot add yourself as a friend.");
+
+            // Optional: Validate users exist
+            var userExists = await _context.Users.AnyAsync(u => u.UserID == userId);
+            var friendExists = await _context.Users.AnyAsync(u => u.UserID == friendId);
+
+            if (!userExists || !friendExists)
+                return NotFound("One or both users not found.");
+
             // Check if already friends
             bool exists = await _context.UserFriends.AnyAsync(f =>
                 f.UserId == userId && f.FriendId == friendId);
@@ -30,8 +40,14 @@ namespace VirtuPathAPI.Controllers
             _context.UserFriends.Add(new UserFriend { UserId = friendId, FriendId = userId });
 
             await _context.SaveChangesAsync();
-            return Ok("Friendship added.");
+
+            return Ok(new {
+                message = "Friendship added.",
+                userId,
+                friendId
+            });
         }
+
 
         // ✅ Get all friends for a user
         [HttpGet("{userId}")]
