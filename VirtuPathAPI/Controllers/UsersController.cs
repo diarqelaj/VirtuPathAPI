@@ -214,16 +214,17 @@ namespace VirtuPathAPI.Controllers
                 {
                     u.UserID,
                     u.FullName,
+                    u.Username, // ✅ ADD THIS
                     u.ProfilePictureUrl,
-                    u.IsVerified,  
+                    u.IsVerified,
                     u.VerifiedDate,
-                    u.IsOfficial 
-
+                    u.IsOfficial
                 })
                 .ToListAsync();
 
             return Ok(matches);
         }
+
 
 
     
