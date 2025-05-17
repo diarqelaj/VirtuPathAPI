@@ -36,18 +36,27 @@ namespace VirtuPathAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<User>> CreateUser(User user)
         {
-            // Validate required fields
+            // ✅ Check required fields
             if (string.IsNullOrWhiteSpace(user.Email) || string.IsNullOrWhiteSpace(user.PasswordHash) || string.IsNullOrWhiteSpace(user.Username))
                 return BadRequest("Email, password, and username are required.");
 
-            // Check for duplicate username or email
+            // ✅ Trim + lowercase username
+            user.Username = user.Username.Trim().ToLower();
+
+            // ✅ Validate username format
+            if (!Regex.IsMatch(user.Username, @"^[a-z0-9_]{3,20}$"))
+            {
+                return BadRequest("Username must be 3–20 characters and contain only lowercase letters, numbers, or underscores.");
+            }
+
+            // ✅ Check if username or email already exists
             if (await _context.Users.AnyAsync(u => u.Username == user.Username))
                 return Conflict(new { error = "Username already taken" });
 
             if (await _context.Users.AnyAsync(u => u.Email == user.Email))
                 return Conflict(new { error = "Email already in use" });
 
-            // Hash the password
+            // ✅ Hash password
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
             user.RegistrationDate = DateTime.UtcNow;
 
@@ -56,6 +65,7 @@ namespace VirtuPathAPI.Controllers
 
             return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
         }
+
         [HttpGet("by-username/{username}")]
         public async Task<IActionResult> GetUserByUsername(string username)
         {
