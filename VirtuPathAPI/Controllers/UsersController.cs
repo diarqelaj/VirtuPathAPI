@@ -28,7 +28,7 @@ namespace VirtuPathAPI.Controllers
         {
             return await _context.Users.ToListAsync();
         }
-          [HttpPost("login")]
+        [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
             if (string.IsNullOrWhiteSpace(req.Identifier))
@@ -39,36 +39,35 @@ namespace VirtuPathAPI.Controllers
             var user = await _context.Users.FirstOrDefaultAsync(u =>
                 u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
 
-            if (user == null)
-                return Unauthorized(new { error = "User not found." });
+            if (user == null) return Unauthorized(new { error = "User not found." });
 
-            // ✅ Check password only if required
-            if (!string.IsNullOrEmpty(user.PasswordHash))
+            if (!string.IsNullOrWhiteSpace(req.Password))
             {
-                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
-                if (!isPasswordValid)
-                    return Unauthorized(new { error = "Invalid email/username or password." });
-            }
-            else
-            {
-                // Allow login if Google-auth
-                if (string.IsNullOrWhiteSpace(req.Password))
-                {
-                    // Allow it if no password required
-                }
-                else
+                if (string.IsNullOrEmpty(user.PasswordHash))
                 {
                     return Unauthorized(new { error = "This account uses Google authentication." });
                 }
+
+                if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+                {
+                    return Unauthorized(new { error = "Invalid password." });
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    return Unauthorized(new { error = "Password required for this account." });
+                }
             }
 
-
-            // ✅ Two-Factor Auth check
+            // ✅ If 2FA is enabled
             if (user.IsTwoFactorEnabled)
             {
                 return Ok(new { requires2FA = true });
             }
 
+            // ✅ Login successful
             HttpContext.Session.SetInt32("UserID", user.UserID);
             user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
             await _context.SaveChangesAsync();
