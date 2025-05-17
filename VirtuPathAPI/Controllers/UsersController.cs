@@ -121,7 +121,8 @@ namespace VirtuPathAPI.Controllers
                     u.ProfilePictureUrl,
                     u.CoverImageUrl,
                     u.IsProfilePrivate,
-                    u.RegistrationDate
+                    u.RegistrationDate,
+                    u.IsVerified
                 })
                 .FirstOrDefaultAsync();
 
@@ -140,10 +141,12 @@ namespace VirtuPathAPI.Controllers
 
             var matches = await _context.Users
                 .Where(u => u.FullName.ToLower().Contains(name.ToLower()))
-                .Select(u => new {
+                .Select(u => new
+                {
                     u.UserID,
                     u.FullName,
-                    u.ProfilePictureUrl // <- this is required for frontend to show image
+                    u.ProfilePictureUrl,
+                    u.IsVerified  // <- this is required for frontend to show image
                 })
                 .ToListAsync();
 

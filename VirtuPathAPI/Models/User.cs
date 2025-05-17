@@ -10,6 +10,7 @@ namespace VirtuPathAPI.Models
     public string Email { get; set; }
     public string PasswordHash { get; set; }
     public DateTime RegistrationDate { get; set; }
+    public bool IsVerified { get; set; } = false;
 
     // 2FA fields
     public bool IsTwoFactorEnabled { get; set; } = false;
