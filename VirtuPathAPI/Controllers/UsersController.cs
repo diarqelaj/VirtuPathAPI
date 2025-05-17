@@ -120,7 +120,8 @@ namespace VirtuPathAPI.Controllers
                     u.About,
                     u.ProfilePictureUrl,
                     u.CoverImageUrl,
-                    u.IsProfilePrivate
+                    u.IsProfilePrivate,
+                    u.RegistrationDate
                 })
                 .FirstOrDefaultAsync();
 
