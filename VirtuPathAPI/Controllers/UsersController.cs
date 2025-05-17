@@ -571,7 +571,11 @@ namespace VirtuPathAPI.Controllers
         [HttpPatch("2fa")]
         public async Task<IActionResult> SetTwoFactorCode([FromBody] TwoFactorRequest req)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+            var identifier = req.Identifier.ToLower();
+
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
             if (user == null) return NotFound();
 
             user.TwoFactorCode = req.Code;
@@ -581,13 +585,18 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { success = true });
         }
+
         [HttpPost("verify-2fa")]
         public async Task<IActionResult> VerifyTwoFactor([FromBody] VerifyTwoFactorRequest req)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-            if (user == null) return Unauthorized(new { error = "User not found" });
+            var identifier = req.Identifier.ToLower();
 
-            // ✅ Proper 2FA check
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
+            if (user == null)
+                return Unauthorized(new { error = "User not found" });
+
             if (user.TwoFactorCode != req.Code || user.TwoFactorCodeExpiresAt < DateTime.UtcNow)
             {
                 return Unauthorized(new { error = "Invalid or expired 2FA code" });
@@ -599,7 +608,6 @@ namespace VirtuPathAPI.Controllers
             if (ip == "::1") ip = "127.0.0.1";
             user.LastKnownIP = ip;
 
-            // ✅ Clear 2FA values
             user.TwoFactorCode = null;
             user.TwoFactorCodeExpiresAt = null;
 
@@ -621,6 +629,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { userID = user.UserID });
         }
+
         public class TextUpdateRequest
         {
             public int UserId { get; set; }
@@ -633,13 +642,13 @@ namespace VirtuPathAPI.Controllers
 
         public class TwoFactorRequest
         {
-            public string Email { get; set; }
+             public string Identifier { get; set; } 
             public string Code { get; set; }
             public DateTime ExpiresAt { get; set; } // ✅ used only when saving
         }
         public class VerifyTwoFactorRequest
         {
-            public string Email { get; set; }
+            public string Identifier { get; set; } 
             public string Code { get; set; }
             public bool RememberMe { get; set; }
         }
