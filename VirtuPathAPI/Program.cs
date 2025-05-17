@@ -97,13 +97,10 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
 
-    app.UseCors("AllowSwagger");
-}
-else
-{
-    app.UseCors("AllowFrontend");
-}
+// ✅ Always allow Vercel frontend
+app.UseCors("AllowFrontend");
 
 app.UseHttpsRedirection();
 
