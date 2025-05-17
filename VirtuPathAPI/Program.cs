@@ -23,7 +23,7 @@ builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs)
 builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs)); // 👈 Add this for chat messages
+// 👈 Add this for chat messages
 
 builder.Services.AddDbContext<ChatContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -93,21 +93,44 @@ var app = builder.Build();
 //------------------------------------------------------------
 // 6)  PIPELINE
 //------------------------------------------------------------
+// 6) PIPELINE
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseCors("AllowSwagger");
+}
+else
+{
+    app.UseCors("AllowFrontend");
 }
 
-// ✅ Always allow Vercel frontend
-app.UseCors("AllowFrontend");
-
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 app.UseCookiePolicy();
 app.UseSession();
 
-app.UseStaticFiles();
+app.Use(async (ctx, next) =>
+{
+    const string rememberCookie = "VirtuPathRemember";
+
+    if (ctx.Session.GetInt32("UserID") == null &&
+        ctx.Request.Cookies.TryGetValue(rememberCookie, out var raw) &&
+        int.TryParse(raw, out var uid))
+    {
+        ctx.Session.SetInt32("UserID", uid);
+    }
+
+    await next();
+});
+
+app.UseAuthorization();
+app.MapControllers();
+app.MapHub<ChatHub>("/chathub");
+
+app.Run();
+
 
 //------------------------------------------------------------
 // 7)  “REMEMBER-ME” RE-HYDRATE MIDDLEWARE
