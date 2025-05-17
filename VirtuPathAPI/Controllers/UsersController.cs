@@ -710,10 +710,15 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
 
             user.IsOfficial = true;
+
+            // ✅ Also store verified date for official accounts
+            user.VerifiedDate = DateTime.UtcNow;
+
             await _context.SaveChangesAsync();
 
             return Ok("User marked as official.");
         }
+
         [HttpPost("unofficial/{userId}")]
         public async Task<IActionResult> RemoveOfficial(int userId)
         {
@@ -721,10 +726,15 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
 
             user.IsOfficial = false;
+
+            // Optional: clear verified date too
+            user.VerifiedDate = null;
+
             await _context.SaveChangesAsync();
 
             return Ok("Official badge removed.");
         }
+
 
 
 
