@@ -594,18 +594,23 @@ namespace VirtuPathAPI.Controllers
             // ✅ Check password only if required
             if (!string.IsNullOrEmpty(user.PasswordHash))
             {
-                if (string.IsNullOrWhiteSpace(req.Password))
-                    return Unauthorized(new { error = "Password is required for this account." });
-
-                if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                    return Unauthorized(new { error = "Incorrect password." });
+                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
+                if (!isPasswordValid)
+                    return Unauthorized(new { error = "Invalid email/username or password." });
             }
             else
             {
-                // Google Auth or other external provider
-                if (!req.IsGoogleLogin)
-                    return Unauthorized(new { error = "This is a Google account. Use Google login." });
+                // Allow login if Google-auth
+                if (string.IsNullOrWhiteSpace(req.Password))
+                {
+                    // Allow it if no password required
+                }
+                else
+                {
+                    return Unauthorized(new { error = "This account uses Google authentication." });
+                }
             }
+
 
             // ✅ Two-Factor Auth check
             if (user.IsTwoFactorEnabled)
