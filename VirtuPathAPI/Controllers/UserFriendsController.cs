@@ -88,6 +88,7 @@ namespace VirtuPathAPI.Controllers
                 .Include(f => f.Follower)
                 .Select(f => new {
                     f.Follower.UserID,
+                     f.Followed.Username,
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
@@ -105,6 +106,7 @@ namespace VirtuPathAPI.Controllers
                 .Include(f => f.Followed)
                 .Select(f => new {
                     f.Followed.UserID,
+                     f.Followed.Username,
                     f.Followed.FullName,
                     f.Followed.ProfilePictureUrl
                 })
@@ -120,7 +122,8 @@ namespace VirtuPathAPI.Controllers
                 .Where(f => f.FollowedId == userId && !f.IsAccepted)
                 .Include(f => f.Follower)
                 .Select(f => new {
-                    FollowerId = f.Follower.UserID, // ✅ match frontend naming
+                    FollowerId = f.Follower.UserID,
+                    f.Followed.Username, // ✅ match frontend naming
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
@@ -147,6 +150,7 @@ namespace VirtuPathAPI.Controllers
                 .Include(f => f.Follower)
                 .Select(f => new {
                     f.Follower.UserID,
+                    f.Followed.Username,
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
