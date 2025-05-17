@@ -11,6 +11,9 @@ namespace VirtuPathAPI.Models
     public string PasswordHash { get; set; }
     public DateTime RegistrationDate { get; set; }
     public bool IsVerified { get; set; } = false;
+    public DateTime? VerifiedDate { get; set; } // ✅ when the user was verified (blue badge)
+    public bool IsOfficial { get; set; } = false; // ✅ marks official accounts (gold badge)
+
 
     // 2FA fields
     public bool IsTwoFactorEnabled { get; set; } = false;

@@ -122,7 +122,9 @@ namespace VirtuPathAPI.Controllers
                     u.CoverImageUrl,
                     u.IsProfilePrivate,
                     u.RegistrationDate,
-                    u.IsVerified
+                    u.IsVerified,
+                    u.VerifiedDate,
+                    u.IsOfficial 
                 })
                 .FirstOrDefaultAsync();
 
@@ -146,7 +148,10 @@ namespace VirtuPathAPI.Controllers
                     u.UserID,
                     u.FullName,
                     u.ProfilePictureUrl,
-                    u.IsVerified  // <- this is required for frontend to show image
+                    u.IsVerified,  
+                    u.VerifiedDate,
+                    u.IsOfficial 
+
                 })
                 .ToListAsync();
 
@@ -681,10 +686,49 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
 
             user.IsVerified = true;
+            user.VerifiedDate = DateTime.UtcNow; // ✅ also record the date
             await _context.SaveChangesAsync();
 
             return Ok("User marked as verified.");
         }
+        [HttpPost("unverify/{userId}")]
+        public async Task<IActionResult> UnverifyUser(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsVerified = false;
+            user.VerifiedDate = null;
+            await _context.SaveChangesAsync();
+
+            return Ok("User unverified.");
+        }
+        [HttpPost("official/{userId}")]
+        public async Task<IActionResult> MakeOfficial(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsOfficial = true;
+            await _context.SaveChangesAsync();
+
+            return Ok("User marked as official.");
+        }
+        [HttpPost("unofficial/{userId}")]
+        public async Task<IActionResult> RemoveOfficial(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsOfficial = false;
+            await _context.SaveChangesAsync();
+
+            return Ok("Official badge removed.");
+        }
+
+
+
+
 
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
