@@ -3,6 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
 using BCrypt.Net;
 using System.Text.RegularExpressions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Webp;
+
 
 
 namespace VirtuPathAPI.Controllers
@@ -33,6 +37,100 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
             return user;
         }
+        private static readonly HashSet<string> ReservedUsernames = new HashSet<string>
+        {
+            "admin", "root", "system", "api", "login", "logout", "signup", "me", "settings",
+            "dashboard", "virtu", "virtu-path-ai", "support", "terms", "privacy", "contact",
+            "about", "pricing", "reset", "user", "users", "security", "public", "private",
+            "team", "teams", "help", "faq"
+        };
+        
+
+        [HttpPost]
+        public async Task<ActionResult<User>> CreateUser(User user)
+        {
+            // ✅ Check required fields
+            if (string.IsNullOrWhiteSpace(user.Email) ||
+                string.IsNullOrWhiteSpace(user.PasswordHash) ||
+                string.IsNullOrWhiteSpace(user.Username))
+            {
+                return BadRequest("Email, password, and username are required.");
+            }
+
+            // ✅ Trim and lowercase the username
+            user.Username = user.Username.Trim().ToLower();
+
+            // ✅ Reserved username check
+            if (ReservedUsernames.Contains(user.Username))
+            {
+                return BadRequest("This username is reserved. Please choose another.");
+            }
+
+            // ✅ Profanity check (this was missing)
+            foreach (var word in ProfanityList.Words)
+            {
+                if (user.Username.Contains(word))
+                {
+                    return BadRequest("Username contains inappropriate content.");
+                }
+            }
+
+            // ✅ Format check
+            if (!Regex.IsMatch(user.Username, @"^[a-z0-9_]{3,20}$"))
+            {
+                return BadRequest("Username must be 3–20 characters and contain only lowercase letters, numbers, or underscores.");
+            }
+
+            // ✅ Check for duplicates
+            if (await _context.Users.AnyAsync(u => u.Username == user.Username))
+                return Conflict(new { error = "Username already taken" });
+
+            if (await _context.Users.AnyAsync(u => u.Email == user.Email))
+                return Conflict(new { error = "Email already in use" });
+
+            // ✅ Hash the password
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
+            user.RegistrationDate = DateTime.UtcNow;
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
+        }
+
+
+
+
+        [HttpGet("by-username/{username}")]
+        public async Task<IActionResult> GetUserByUsername(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                return BadRequest(new { error = "Username is required" });
+
+            string normalized = username.Trim().ToLower();
+
+            var user = await _context.Users
+                .Where(u => u.Username.ToLower() == normalized)
+                .Select(u => new
+                {
+                    u.UserID,
+                    u.FullName,
+                    u.Username,
+                    u.Bio,
+                    u.About,
+                    u.ProfilePictureUrl,
+                    u.CoverImageUrl,
+                    u.IsProfilePrivate
+                })
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+                return NotFound(new { error = "User not found" });
+
+            return Ok(user);
+}
+
+
         [HttpGet("search")]
         public async Task<IActionResult> SearchUsersByName([FromQuery] string name)
         {
@@ -52,18 +150,7 @@ namespace VirtuPathAPI.Controllers
         }
 
 
-        
-        // ✅ POST /api/users — Register new user with hashed password
-        [HttpPost]
-        public async Task<ActionResult<User>> CreateUser(User user)
-        {
-            // Hash the password before saving
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
-        }
+    
 
         // ✅ PUT /api/users/{id} — Update existing user
         [HttpPut("{id}")]
@@ -82,27 +169,49 @@ namespace VirtuPathAPI.Controllers
             if (file == null || file.Length == 0)
                 return BadRequest("No file uploaded.");
 
+            // ✅ Limit file size to 5MB
+            if (file.Length > 5 * 1024 * 1024)
+                return BadRequest("Image must be less than 5MB.");
+
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var ext = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(ext))
+                return BadRequest("Only .jpg, .jpeg, .png, and .webp image formats are allowed.");
+
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
                 return NotFound("User not found.");
 
-            // Ensure the folder exists
+            // ✅ Delete old image if exists
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            {
+                var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.ProfilePictureUrl.TrimStart('/'));
+                if (System.IO.File.Exists(oldPath))
+                    System.IO.File.Delete(oldPath);
+            }
+
+            // ✅ Ensure folder exists
             var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "profile-pictures");
             if (!Directory.Exists(uploadsFolder))
                 Directory.CreateDirectory(uploadsFolder);
 
-            // Generate unique file name
-            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-            var filePath = Path.Combine(uploadsFolder, fileName);
+            // ✅ Convert + resize to .webp
+            var webpFileName = $"{Guid.NewGuid()}.webp";
+            var webpFilePath = Path.Combine(uploadsFolder, webpFileName);
 
-            // Save file to server
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            using (var image = await Image.LoadAsync(file.OpenReadStream()))
             {
-                await file.CopyToAsync(stream);
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(512, 512)
+                }));
+
+                await image.SaveAsync(webpFilePath, new WebpEncoder { Quality = 85 });
             }
 
-            // Set relative URL to serve from frontend
-            var imageUrl = $"/profile-pictures/{fileName}";
+            // ✅ Update user with new image
+            var imageUrl = $"/profile-pictures/{webpFileName}";
             user.ProfilePictureUrl = imageUrl;
 
             _context.Users.Update(user);
@@ -110,6 +219,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { profilePictureUrl = imageUrl });
         }
+
         [HttpDelete("delete-profile-picture")]
         public async Task<IActionResult> DeleteProfilePicture([FromQuery] int userId)
         {
@@ -130,29 +240,57 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "Profile picture deleted." });
         }
+
+
         [HttpPost("upload-cover")]
         public async Task<IActionResult> UploadCoverImage([FromForm] IFormFile file, [FromForm] int userId)
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No file uploaded.");
 
+            // ✅ Max 5MB check
+            if (file.Length > 5 * 1024 * 1024)
+                return BadRequest("Image must be less than 5MB.");
+
+            // ✅ Validate allowed image formats
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var ext = Path.GetExtension(file.FileName).ToLower();
+            if (!allowedExtensions.Contains(ext))
+                return BadRequest("Only .jpg, .jpeg, .png, and .webp image formats are allowed.");
+
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
                 return NotFound("User not found.");
 
+            // ✅ Delete old cover image if it exists
+            if (!string.IsNullOrEmpty(user.CoverImageUrl))
+            {
+                var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.CoverImageUrl.TrimStart('/'));
+                if (System.IO.File.Exists(oldPath))
+                    System.IO.File.Delete(oldPath);
+            }
+
+            // ✅ Ensure folder exists
             var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "cover-images");
             if (!Directory.Exists(uploadsFolder))
                 Directory.CreateDirectory(uploadsFolder);
 
-            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
-            var filePath = Path.Combine(uploadsFolder, fileName);
+            // ✅ Convert to .webp and resize (1280x720 max)
+            var webpFileName = $"{Guid.NewGuid()}.webp";
+            var filePath = Path.Combine(uploadsFolder, webpFileName);
 
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            using (var image = await Image.LoadAsync(file.OpenReadStream()))
             {
-                await file.CopyToAsync(stream);
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(1280, 720)
+                }));
+
+                await image.SaveAsync(filePath, new WebpEncoder { Quality = 85 });
             }
 
-            var imageUrl = $"/cover-images/{fileName}";
+            var imageUrl = $"/cover-images/{webpFileName}";
             user.CoverImageUrl = imageUrl;
 
             _context.Users.Update(user);
@@ -160,6 +298,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { coverImageUrl = imageUrl });
         }
+
         [HttpDelete("delete-cover-image")]
         public async Task<IActionResult> DeleteCoverImage([FromQuery] int userId)
         {
@@ -429,36 +568,44 @@ namespace VirtuPathAPI.Controllers
             public bool RememberMe { get; set; }
         }
 
-
-
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-            if (user == null) return Unauthorized();
+            // ✅ Validate input
+            if (string.IsNullOrWhiteSpace(req.Identifier) || string.IsNullOrWhiteSpace(req.Password))
+            {
+                return BadRequest(new { error = "Identifier and password are required." });
+            }
 
-            // ✅ Google users can login without password
-            if (!string.IsNullOrEmpty(req.Password))
+            // ✅ Normalize input
+            var identifier = req.Identifier.Trim().ToLower();
+
+            // ✅ Find user by email or username
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
+            if (user == null)
+                return Unauthorized(new { error = "Invalid email/username or password." });
+
+            // ✅ Validate password (unless it's a Google login without password hash)
+            if (!string.IsNullOrEmpty(user.PasswordHash))
             {
                 bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
-                if (!isPasswordValid) return Unauthorized();
+                if (!isPasswordValid)
+                    return Unauthorized(new { error = "Invalid email/username or password." });
             }
             else
             {
-                // Only allow passwordless if user is Google user (no password hash)
-                if (!string.IsNullOrEmpty(user.PasswordHash))
-                {
-                    return Unauthorized(new { error = "Password required" });
-                }
+                return Unauthorized(new { error = "Password required for this account." });
             }
 
-            // ✅ Return early if user has 2FA enabled
+            // ✅ If 2FA is enabled, require verification first
             if (user.IsTwoFactorEnabled)
             {
                 return Ok(new { requires2FA = true });
             }
 
-            // ✅ Normal login (no 2FA)
+            // ✅ Login success – set session
             HttpContext.Session.SetInt32("UserID", user.UserID);
 
             var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -466,6 +613,7 @@ namespace VirtuPathAPI.Controllers
             user.LastKnownIP = ip;
             await _context.SaveChangesAsync();
 
+            // ✅ Optional: Remember Me cookie
             if (req.RememberMe)
             {
                 Response.Cookies.Append(
@@ -480,8 +628,17 @@ namespace VirtuPathAPI.Controllers
                     });
             }
 
-            return Ok(new { userID = user.UserID });
+            return Ok(new
+            {
+                userID = user.UserID,
+                username = user.Username,
+                fullName = user.FullName,
+                profilePicture = user.ProfilePictureUrl
+            });
+
         }
+
+
 
 
 
@@ -549,10 +706,11 @@ namespace VirtuPathAPI.Controllers
 
     public class LoginRequest
     {
-        public string Email { get; set; }
+        public string Identifier { get; set; } // can be username or email
         public string Password { get; set; }
         public bool RememberMe { get; set; }
     }
+
     public class ChangePasswordRequest
 {
     public string OldPassword { get; set; }
