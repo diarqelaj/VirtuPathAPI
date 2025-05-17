@@ -78,8 +78,6 @@ namespace VirtuPathAPI.Controllers
 
             return NotFound("No follow relationship found.");
         }
-
-        // ✅ Followers (accepted only)
         [HttpGet("followers/{userId}")]
         public async Task<IActionResult> GetFollowers(int userId)
         {
@@ -88,6 +86,7 @@ namespace VirtuPathAPI.Controllers
                 .Include(f => f.Follower)
                 .Select(f => new {
                     f.Follower.UserID,
+                    f.Follower.Username, // ✅ FIXED
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
@@ -95,6 +94,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(followers);
         }
+
 
         // ✅ Following (accepted only)
         [HttpGet("following/{userId}")]
@@ -105,6 +105,7 @@ namespace VirtuPathAPI.Controllers
                 .Include(f => f.Followed)
                 .Select(f => new {
                     f.Followed.UserID,
+                    f.Followed.Username,
                     f.Followed.FullName,
                     f.Followed.ProfilePictureUrl
                 })
@@ -120,7 +121,8 @@ namespace VirtuPathAPI.Controllers
                 .Where(f => f.FollowedId == userId && !f.IsAccepted)
                 .Include(f => f.Follower)
                 .Select(f => new {
-                    FollowerId = f.Follower.UserID, // ✅ match frontend naming
+                    FollowerId = f.Follower.UserID,
+                    f.Follower.Username, // ✅ FIXED
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
@@ -130,7 +132,7 @@ namespace VirtuPathAPI.Controllers
         }
 
 
-        // ✅ Mutuals (real friends)
+
         [HttpGet("mutual/{userId}")]
         public async Task<IActionResult> GetMutualFriends(int userId)
         {
@@ -147,6 +149,7 @@ namespace VirtuPathAPI.Controllers
                 .Include(f => f.Follower)
                 .Select(f => new {
                     f.Follower.UserID,
+                    f.Follower.Username, // ✅ FIXED
                     f.Follower.FullName,
                     f.Follower.ProfilePictureUrl
                 })
@@ -154,5 +157,6 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(mutuals);
         }
+
     }
 }
