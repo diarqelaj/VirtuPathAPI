@@ -28,6 +28,74 @@ namespace VirtuPathAPI.Controllers
         {
             return await _context.Users.ToListAsync();
         }
+          [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Identifier))
+                return BadRequest(new { error = "Email or username is required." });
+
+            var identifier = req.Identifier.Trim().ToLower();
+
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
+            if (user == null)
+                return Unauthorized(new { error = "User not found." });
+
+            // ✅ Check password only if required
+            if (!string.IsNullOrEmpty(user.PasswordHash))
+            {
+                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
+                if (!isPasswordValid)
+                    return Unauthorized(new { error = "Invalid email/username or password." });
+            }
+            else
+            {
+                // Allow login if Google-auth
+                if (string.IsNullOrWhiteSpace(req.Password))
+                {
+                    // Allow it if no password required
+                }
+                else
+                {
+                    return Unauthorized(new { error = "This account uses Google authentication." });
+                }
+            }
+
+
+            // ✅ Two-Factor Auth check
+            if (user.IsTwoFactorEnabled)
+            {
+                return Ok(new { requires2FA = true });
+            }
+
+            HttpContext.Session.SetInt32("UserID", user.UserID);
+            user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
+            await _context.SaveChangesAsync();
+
+            if (req.RememberMe)
+            {
+                Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
+                {
+                    HttpOnly = false,
+                    Secure = true,
+                    SameSite = SameSiteMode.None,
+                    Expires = DateTimeOffset.UtcNow.AddMonths(1),
+                });
+            }
+
+            return Ok(new
+            {
+                userID = user.UserID,
+                username = user.Username,
+                fullName = user.FullName,
+                profilePicture = user.ProfilePictureUrl
+            });
+        }
+
+
+
+
 
         // ✅ GET user by ID
         [HttpGet("{id}")]
@@ -577,74 +645,7 @@ namespace VirtuPathAPI.Controllers
             public bool RememberMe { get; set; }
         }
 
-       [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest req)
-        {
-            if (string.IsNullOrWhiteSpace(req.Identifier))
-                return BadRequest(new { error = "Email or username is required." });
-
-            var identifier = req.Identifier.Trim().ToLower();
-
-            var user = await _context.Users.FirstOrDefaultAsync(u =>
-                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
-
-            if (user == null)
-                return Unauthorized(new { error = "User not found." });
-
-            // ✅ Check password only if required
-            if (!string.IsNullOrEmpty(user.PasswordHash))
-            {
-                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
-                if (!isPasswordValid)
-                    return Unauthorized(new { error = "Invalid email/username or password." });
-            }
-            else
-            {
-                // Allow login if Google-auth
-                if (string.IsNullOrWhiteSpace(req.Password))
-                {
-                    // Allow it if no password required
-                }
-                else
-                {
-                    return Unauthorized(new { error = "This account uses Google authentication." });
-                }
-            }
-
-
-            // ✅ Two-Factor Auth check
-            if (user.IsTwoFactorEnabled)
-            {
-                return Ok(new { requires2FA = true });
-            }
-
-            HttpContext.Session.SetInt32("UserID", user.UserID);
-            user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
-            await _context.SaveChangesAsync();
-
-            if (req.RememberMe)
-            {
-                Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
-                {
-                    HttpOnly = false,
-                    Secure = true,
-                    SameSite = SameSiteMode.None,
-                    Expires = DateTimeOffset.UtcNow.AddMonths(1),
-                });
-            }
-
-            return Ok(new
-            {
-                userID = user.UserID,
-                username = user.Username,
-                fullName = user.FullName,
-                profilePicture = user.ProfilePictureUrl
-            });
-        }
-
-
-
-
+     
 
 
         [HttpPost("logout")]
