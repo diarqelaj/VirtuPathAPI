@@ -577,64 +577,55 @@ namespace VirtuPathAPI.Controllers
             public bool RememberMe { get; set; }
         }
 
-        [HttpPost("login")]
+       [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            // ✅ Validate input
-            if (string.IsNullOrWhiteSpace(req.Identifier) || string.IsNullOrWhiteSpace(req.Password))
-            {
-                return BadRequest(new { error = "Identifier and password are required." });
-            }
+            if (string.IsNullOrWhiteSpace(req.Identifier))
+                return BadRequest(new { error = "Email or username is required." });
 
-            // ✅ Normalize input
             var identifier = req.Identifier.Trim().ToLower();
 
-            // ✅ Find user by email or username
             var user = await _context.Users.FirstOrDefaultAsync(u =>
                 u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
 
             if (user == null)
-                return Unauthorized(new { error = "Invalid email/username or password." });
+                return Unauthorized(new { error = "User not found." });
 
-            // ✅ Validate password (unless it's a Google login without password hash)
+            // ✅ Check password only if required
             if (!string.IsNullOrEmpty(user.PasswordHash))
             {
-                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
-                if (!isPasswordValid)
-                    return Unauthorized(new { error = "Invalid email/username or password." });
+                if (string.IsNullOrWhiteSpace(req.Password))
+                    return Unauthorized(new { error = "Password is required for this account." });
+
+                if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+                    return Unauthorized(new { error = "Incorrect password." });
             }
             else
             {
-                return Unauthorized(new { error = "Password required for this account." });
+                // Google Auth or other external provider
+                if (!req.IsGoogleLogin)
+                    return Unauthorized(new { error = "This is a Google account. Use Google login." });
             }
 
-            // ✅ If 2FA is enabled, require verification first
+            // ✅ Two-Factor Auth check
             if (user.IsTwoFactorEnabled)
             {
                 return Ok(new { requires2FA = true });
             }
 
-            // ✅ Login success – set session
             HttpContext.Session.SetInt32("UserID", user.UserID);
-
-            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-            if (ip == "::1") ip = "127.0.0.1";
-            user.LastKnownIP = ip;
+            user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
             await _context.SaveChangesAsync();
 
-            // ✅ Optional: Remember Me cookie
             if (req.RememberMe)
             {
-                Response.Cookies.Append(
-                    "VirtuPathRemember",
-                    user.UserID.ToString(),
-                    new CookieOptions
-                    {
-                        HttpOnly = false,
-                        Secure = true,
-                        SameSite = SameSiteMode.None,
-                        Expires = DateTimeOffset.UtcNow.AddMonths(1),
-                    });
+                Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
+                {
+                    HttpOnly = false,
+                    Secure = true,
+                    SameSite = SameSiteMode.None,
+                    Expires = DateTimeOffset.UtcNow.AddMonths(1),
+                });
             }
 
             return Ok(new
@@ -644,7 +635,6 @@ namespace VirtuPathAPI.Controllers
                 fullName = user.FullName,
                 profilePicture = user.ProfilePictureUrl
             });
-
         }
 
 
@@ -776,10 +766,12 @@ namespace VirtuPathAPI.Controllers
 
     public class LoginRequest
     {
-        public string Identifier { get; set; } // can be username or email
-        public string Password { get; set; }
+        public string Identifier { get; set; } // email or username
+        public string? Password { get; set; }
         public bool RememberMe { get; set; }
+        public bool IsGoogleLogin { get; set; } // NEW
     }
+
 
     public class ChangePasswordRequest
 {
