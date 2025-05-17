@@ -674,6 +674,18 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(user);
         }
+        [HttpPost("verify/{userId}")]
+        public async Task<IActionResult> VerifyUser(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsVerified = true;
+            await _context.SaveChangesAsync();
+
+            return Ok("User marked as verified.");
+        }
+
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
         {
