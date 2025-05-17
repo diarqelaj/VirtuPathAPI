@@ -33,6 +33,59 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
             return user;
         }
+        [HttpPost]
+        public async Task<ActionResult<User>> CreateUser(User user)
+        {
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(user.Email) || string.IsNullOrWhiteSpace(user.PasswordHash) || string.IsNullOrWhiteSpace(user.Username))
+                return BadRequest("Email, password, and username are required.");
+
+            // Check for duplicate username or email
+            if (await _context.Users.AnyAsync(u => u.Username == user.Username))
+                return Conflict(new { error = "Username already taken" });
+
+            if (await _context.Users.AnyAsync(u => u.Email == user.Email))
+                return Conflict(new { error = "Email already in use" });
+
+            // Hash the password
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
+            user.RegistrationDate = DateTime.UtcNow;
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
+        }
+        [HttpGet("by-username/{username}")]
+        public async Task<IActionResult> GetUserByUsername(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                return BadRequest(new { error = "Username is required" });
+
+            string normalized = username.Trim().ToLower();
+
+            var user = await _context.Users
+                .Where(u => u.Username.ToLower() == normalized)
+                .Select(u => new
+                {
+                    u.UserID,
+                    u.FullName,
+                    u.Username,
+                    u.Bio,
+                    u.About,
+                    u.ProfilePictureUrl,
+                    u.CoverImageUrl,
+                    u.IsProfilePrivate
+                })
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+                return NotFound(new { error = "User not found" });
+
+            return Ok(user);
+}
+
+
         [HttpGet("search")]
         public async Task<IActionResult> SearchUsersByName([FromQuery] string name)
         {
@@ -52,18 +105,7 @@ namespace VirtuPathAPI.Controllers
         }
 
 
-        
-        // ✅ POST /api/users — Register new user with hashed password
-        [HttpPost]
-        public async Task<ActionResult<User>> CreateUser(User user)
-        {
-            // Hash the password before saving
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
-        }
+    
 
         // ✅ PUT /api/users/{id} — Update existing user
         [HttpPut("{id}")]
@@ -430,35 +472,28 @@ namespace VirtuPathAPI.Controllers
         }
 
 
-
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == req.Identifier.ToLower() ||
+                u.Username.ToLower() == req.Identifier.ToLower());
+
             if (user == null) return Unauthorized();
 
-            // ✅ Google users can login without password
             if (!string.IsNullOrEmpty(req.Password))
             {
                 bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
                 if (!isPasswordValid) return Unauthorized();
             }
-            else
+            else if (!string.IsNullOrEmpty(user.PasswordHash))
             {
-                // Only allow passwordless if user is Google user (no password hash)
-                if (!string.IsNullOrEmpty(user.PasswordHash))
-                {
-                    return Unauthorized(new { error = "Password required" });
-                }
+                return Unauthorized(new { error = "Password required" });
             }
 
-            // ✅ Return early if user has 2FA enabled
             if (user.IsTwoFactorEnabled)
-            {
                 return Ok(new { requires2FA = true });
-            }
 
-            // ✅ Normal login (no 2FA)
             HttpContext.Session.SetInt32("UserID", user.UserID);
 
             var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
@@ -482,6 +517,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { userID = user.UserID });
         }
+
 
 
 
@@ -549,10 +585,11 @@ namespace VirtuPathAPI.Controllers
 
     public class LoginRequest
     {
-        public string Email { get; set; }
+        public string Identifier { get; set; } // can be username or email
         public string Password { get; set; }
         public bool RememberMe { get; set; }
     }
+
     public class ChangePasswordRequest
 {
     public string OldPassword { get; set; }
