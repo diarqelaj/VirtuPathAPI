@@ -3,9 +3,9 @@ using VirtuPathAPI.Models;
 namespace VirtuPathAPI.Data
 {
     
-        public class ChatContext : DbContext
+        public class ChattContext : DbContext
         {
-            public ChatContext(DbContextOptions<ChatContext> options) : base(options) { }
+            public ChattContext(DbContextOptions<ChattContext> options) : base(options) { }
 
             public DbSet<Message> Messages { get; set; }
         }
