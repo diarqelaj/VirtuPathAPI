@@ -12,7 +12,7 @@ namespace VirtuPathAPI.Controllers
 
         public ChatController(ChatContext context)
         {
-            _context = context;
+            _context = context; 
         }
 
         /* ───────────────────────────── Helpers ───────────────────────────── */
