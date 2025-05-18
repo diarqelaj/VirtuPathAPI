@@ -12,10 +12,8 @@ namespace VirtuPathAPI.Controllers
 
         public ChatController(ChatContext context)
         {
-            _context = context; 
+            _context = context;
         }
-
-        /* ───────────────────────────── Helpers ───────────────────────────── */
 
         private int? GetCurrentUserId() => HttpContext.Session.GetInt32("UserID");
 
@@ -31,9 +29,6 @@ namespace VirtuPathAPI.Controllers
                           .Select(u => (int?)u.UserID)
                           .FirstOrDefaultAsync();
 
-        /* ───────────────────────── ID-based endpoints (unchanged) ───────────────────────── */
-
-        // GET  api/chat/messages/42
         [HttpGet("messages/{withUserId:int}")]
         public async Task<IActionResult> GetMessages(int withUserId)
         {
@@ -45,15 +40,14 @@ namespace VirtuPathAPI.Controllers
 
             var messages = await _context.ChatMessages
                 .Where(m =>
-                    (m.SenderId == me && m.ReceiverId == withUserId) ||
-                    (m.SenderId == withUserId && m.ReceiverId == me))
+                    ((m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
+                     (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver)))
                 .OrderBy(m => m.SentAt)
                 .ToListAsync();
 
             return Ok(messages);
         }
 
-        // POST api/chat/send
         [HttpPost("send")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
         {
@@ -65,10 +59,12 @@ namespace VirtuPathAPI.Controllers
 
             var message = new ChatMessage
             {
-                SenderId   = me.Value,
+                SenderId = me.Value,
                 ReceiverId = req.ReceiverId,
-                Message    = req.Message,
-                SentAt     = DateTime.UtcNow
+                Message = req.Message,
+                SentAt = DateTime.UtcNow,
+                ReplyToMessageId = req.ReplyToMessageId,
+                ReactionEmoji = req.ReactionEmoji
             };
 
             _context.ChatMessages.Add(message);
@@ -77,47 +73,109 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { success = true });
         }
 
-        /* ───────────────────────── Username-based endpoints (new) ───────────────────────── */
+        [HttpDelete("delete/{messageId:int}")]
+        public async Task<IActionResult> DeleteForSender(int messageId)
+        {
+            int? me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
 
-        // GET  api/chat/messages/by-username/jane_doe
+            var message = await _context.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId);
+            if (message == null || message.SenderId != me.Value) return NotFound();
+
+            message.IsDeletedForSender = true;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { deleted = true });
+        }
+
+        [HttpDelete("delete-for-everyone/{messageId:int}")]
+        public async Task<IActionResult> DeleteForEveryone(int messageId)
+        {
+            int? me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
+
+            var message = await _context.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId);
+            if (message == null || message.SenderId != me.Value) return NotFound();
+
+            message.IsDeletedForSender = true;
+            message.IsDeletedForReceiver = true;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { deletedForAll = true });
+        }
+
+        [HttpPatch("edit/{messageId:int}")]
+        public async Task<IActionResult> EditMessage(int messageId, [FromBody] string newText)
+        {
+            int? me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
+
+            var message = await _context.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId);
+            if (message == null || message.SenderId != me.Value) return NotFound();
+
+            message.Message = newText;
+            message.IsEdited = true;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { edited = true });
+        }
+
+        [HttpPatch("react/{messageId:int}")]
+        public async Task<IActionResult> ReactToMessage(int messageId, [FromBody] string emoji)
+        {
+            int? me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
+
+            var message = await _context.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId);
+            if (message == null) return NotFound();
+
+            if (message.ReceiverId != me && message.SenderId != me)
+                return Forbid();
+
+            message.ReactionEmoji = emoji;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { reacted = true });
+        }
+
         [HttpGet("messages/by-username/{username}")]
         public async Task<IActionResult> GetMessagesByUsername(string username)
         {
             int? friendId = await UsernameToIdAsync(username);
             if (friendId is null) return NotFound("User not found.");
-
-            // Re-use the existing ID-based logic through local redirect
             return await GetMessages(friendId.Value);
         }
 
-        // POST api/chat/send/by-username
         [HttpPost("send/by-username")]
         public async Task<IActionResult> SendMessageByUsername([FromBody] SendMessageByUsernameRequest req)
         {
             int? friendId = await UsernameToIdAsync(req.ReceiverUsername);
             if (friendId is null) return NotFound("User not found.");
 
-            // Re-use the existing ID-based logic
             var idRequest = new SendMessageRequest
             {
                 ReceiverId = friendId.Value,
-                Message    = req.Message
+                Message = req.Message,
+                ReplyToMessageId = req.ReplyToMessageId,
+                ReactionEmoji = req.ReactionEmoji
             };
             return await SendMessage(idRequest);
         }
 
-        /* ───────────────────────── Request DTOs ───────────────────────── */
-
         public class SendMessageRequest
         {
-            public int    ReceiverId { get; set; }
-            public string Message    { get; set; } = string.Empty;
+            public int ReceiverId { get; set; }
+            public string Message { get; set; } = string.Empty;
+            public int? ReplyToMessageId { get; set; }
+            public string? ReactionEmoji { get; set; }
         }
 
         public class SendMessageByUsernameRequest
         {
             public string ReceiverUsername { get; set; } = string.Empty;
-            public string Message          { get; set; } = string.Empty;
+            public string Message { get; set; } = string.Empty;
+            public int? ReplyToMessageId { get; set; }
+            public string? ReactionEmoji { get; set; }
         }
     }
 }
