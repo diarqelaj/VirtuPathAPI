@@ -1,17 +1,16 @@
-﻿// Program.cs  –  VirtuPathAPI
+﻿// Program.cs – VirtuPathAPI
 //------------------------------------------------------------
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VirtuPathAPI.Models;
-using VirtuPathAPI.Hubs; // 👈 Add this for ChatHub
-using Microsoft.AspNetCore.SignalR;
+using VirtuPathAPI.Hubs;
 using VirtuPathAPI.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
 //------------------------------------------------------------
-// 1)  DATABASE CONTEXTS
+// 1) DATABASE CONTEXTS
 //------------------------------------------------------------
 string cs = builder.Configuration.GetConnectionString("VirtuPathDB");
 
@@ -23,17 +22,23 @@ builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs)
 builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
-// 👈 Add this for chat messages
+
 
 builder.Services.AddDbContext<ChatContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
+
+// 👇 ChatContext uses different connection string
 
 //------------------------------------------------------------
-// 2)  CORS Policies
+// 2) SIGNALR
+//------------------------------------------------------------
+builder.Services.AddSignalR();
+
+//------------------------------------------------------------
+// 3) CORS Policies
 //------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
-    // ✅ Allow only the deployed frontend
     options.AddPolicy("AllowFrontend", p =>
     {
         p.WithOrigins("https://virtu-path-ai.vercel.app")
@@ -42,11 +47,9 @@ builder.Services.AddCors(options =>
          .AllowAnyMethod();
     });
 
-    // ✅ Allow Swagger UI in development
     options.AddPolicy("AllowSwagger", p =>
     {
-        p.WithOrigins("https://localhost:7072", "https://localhost:3000", "http://localhost:3000")
-
+        p.WithOrigins("https://localhost:7072", "https://localhost:3000", "https://localhost:3000")
          .AllowAnyHeader()
          .AllowAnyMethod()
          .AllowCredentials();
@@ -54,7 +57,7 @@ builder.Services.AddCors(options =>
 });
 
 //------------------------------------------------------------
-// 3)  SESSION + COOKIE POLICY
+// 4) SESSION + COOKIE POLICY
 //------------------------------------------------------------
 builder.Services.AddDistributedMemoryCache();
 
@@ -64,16 +67,13 @@ builder.Services.AddSession(opt =>
     opt.Cookie.HttpOnly = true;
     opt.Cookie.IsEssential = true;
     opt.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-
     opt.Cookie.SameSite = SameSiteMode.None;
     opt.IdleTimeout = TimeSpan.FromMinutes(360);
 });
 
 //------------------------------------------------------------
-// 4)  MVC / Swagger / SignalR
+// 5) MVC / JSON / SWAGGER
 //------------------------------------------------------------
-builder.Services.AddSignalR(); // 👈 Add SignalR support
-
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -86,14 +86,13 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 //------------------------------------------------------------
-// 5)  BUILD
+// 6) BUILD
 //------------------------------------------------------------
 var app = builder.Build();
 
 //------------------------------------------------------------
-// 6)  PIPELINE
+// 7) PIPELINE
 //------------------------------------------------------------
-// 6) PIPELINE
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -111,30 +110,7 @@ app.UseStaticFiles();
 app.UseCookiePolicy();
 app.UseSession();
 
-app.Use(async (ctx, next) =>
-{
-    const string rememberCookie = "VirtuPathRemember";
-
-    if (ctx.Session.GetInt32("UserID") == null &&
-        ctx.Request.Cookies.TryGetValue(rememberCookie, out var raw) &&
-        int.TryParse(raw, out var uid))
-    {
-        ctx.Session.SetInt32("UserID", uid);
-    }
-
-    await next();
-});
-
-app.UseAuthorization();
-app.MapControllers();
-app.MapHub<ChatHub>("/chathub");
-
-app.Run();
-
-
-//------------------------------------------------------------
-// 7)  “REMEMBER-ME” RE-HYDRATE MIDDLEWARE
-//------------------------------------------------------------
+// ✅ Remember-me Rehydration Middleware
 app.Use(async (ctx, next) =>
 {
     const string rememberCookie = "VirtuPathRemember";
@@ -152,10 +128,6 @@ app.Use(async (ctx, next) =>
 app.UseAuthorization();
 
 app.MapControllers();
-
-//------------------------------------------------------------
-// 8)  MAP SIGNALR HUB
-//------------------------------------------------------------
-app.MapHub<ChatHub>("/chathub"); // 👈 SignalR ChatHub endpoint
+app.MapHub<ChatHub>("/chathub"); // ✅ SignalR endpoint
 
 app.Run();
