@@ -19,5 +19,7 @@
 
         public User Sender { get; set; }
         public User Receiver { get; set; }
+        public ICollection<MessageReaction> Reactions { get; set; } = new List<MessageReaction>();
+
     }
 }

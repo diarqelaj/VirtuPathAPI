@@ -73,7 +73,7 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { success = true });
         }
 
-        [HttpDelete("delete/{messageId:int}")]
+        [HttpPost("delete/{messageId:int}/sender")]
         public async Task<IActionResult> DeleteForSender(int messageId)
         {
             int? me = GetCurrentUserId();
@@ -88,7 +88,7 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { deleted = true });
         }
 
-        [HttpDelete("delete-for-everyone/{messageId:int}")]
+        [HttpPost("delete-for-everyone/{messageId:int}")]
         public async Task<IActionResult> DeleteForEveryone(int messageId)
         {
             int? me = GetCurrentUserId();
@@ -104,8 +104,13 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { deletedForAll = true });
         }
 
-        [HttpPatch("edit/{messageId:int}")]
-        public async Task<IActionResult> EditMessage(int messageId, [FromBody] string newText)
+        public class EditMessageRequest
+        {
+            public string NewMessage { get; set; } = string.Empty;
+        }
+
+        [HttpPut("edit/{messageId:int}")]
+        public async Task<IActionResult> EditMessage(int messageId, [FromBody] EditMessageRequest body)
         {
             int? me = GetCurrentUserId();
             if (me is null) return Unauthorized();
@@ -113,7 +118,7 @@ namespace VirtuPathAPI.Controllers
             var message = await _context.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId);
             if (message == null || message.SenderId != me.Value) return NotFound();
 
-            message.Message = newText;
+            message.Message = body.NewMessage;
             message.IsEdited = true;
             await _context.SaveChangesAsync();
 
@@ -137,6 +142,23 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { reacted = true });
         }
+        [HttpDelete("react/{messageId:int}")]
+        public async Task<IActionResult> RemoveReaction(int messageId)
+        {
+            int? me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
+
+            var reaction = await _context.MessageReactions
+                .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me.Value);
+
+            if (reaction == null) return NotFound("No reaction to remove.");
+
+            _context.MessageReactions.Remove(reaction);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { removed = true });
+        }
+
 
         [HttpGet("messages/by-username/{username}")]
         public async Task<IActionResult> GetMessagesByUsername(string username)
