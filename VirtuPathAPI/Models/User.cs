@@ -1,45 +1,90 @@
 ﻿using System;
+using System.Text.Json.Serialization;
 
 namespace VirtuPathAPI.Models
 {
     public class User
-{
-    public int UserID { get; set; }
-    public string FullName { get; set; }
-    public string Username { get; set; } = null!;
-    public string Email { get; set; }
-    public string PasswordHash { get; set; }
-    public DateTime RegistrationDate { get; set; }
+    {
+        [JsonPropertyName("userID")]
+        public int UserID { get; set; }
 
-    // 2FA fields
-    public bool IsTwoFactorEnabled { get; set; } = false;
-    public string? TwoFactorCode { get; set; }
-    public DateTime? TwoFactorCodeExpiresAt { get; set; }
+        [JsonPropertyName("fullName")]
+        public string FullName { get; set; }
 
-    // Profile
-    public string? ProfilePictureUrl { get; set; }
-    public string? CoverImageUrl { get; set; }
-    public string? Bio { get; set; } // 🆕 Short bio (1–2 sentences)
-    public string? About { get; set; } // 🆕 More detailed personal info
+        [JsonPropertyName("username")]
+        public string Username { get; set; } = null!;
 
-    public bool IsProfilePrivate { get; set; } = false;
+        [JsonPropertyName("email")]
+        public string Email { get; set; }
 
-    public bool ProductUpdates { get; set; } = false;
-    public bool CareerTips { get; set; } = false;
-    public bool NewCareerPathAlerts { get; set; } = false;
-    public bool Promotions { get; set; } = false;
+        [JsonPropertyName("passwordHash")]
+        public string PasswordHash { get; set; }
 
-    // 🆕 Progress Tracking Fields
-    public int? CareerPathID { get; set; }
-    public int CurrentDay { get; set; } = 0; // Day user is currently on (0-6)
-    public DateTime? LastTaskDate { get; set; } // Date when user last got/completed tasks
+        [JsonPropertyName("registrationDate")]
+        public DateTime RegistrationDate { get; set; }
 
-    // Optional: track IP if needed
-    public string? LastKnownIP { get; set; }
+        [JsonPropertyName("isVerified")]
+        public bool IsVerified { get; set; } = false;
 
-    // Navigation property (optional if you want to load career path info)
-    public CareerPath? CareerPath { get; set; }
-}
+        [JsonPropertyName("verifiedDate")]
+        public DateTime? VerifiedDate { get; set; }
 
+        [JsonPropertyName("isOfficial")]
+        public bool IsOfficial { get; set; } = false;
 
+        // 2FA fields
+        [JsonPropertyName("isTwoFactorEnabled")]
+        public bool IsTwoFactorEnabled { get; set; } = false;
+
+        [JsonPropertyName("twoFactorCode")]
+        public string? TwoFactorCode { get; set; }
+
+        [JsonPropertyName("twoFactorCodeExpiresAt")]
+        public DateTime? TwoFactorCodeExpiresAt { get; set; }
+
+        // Profile
+        [JsonPropertyName("profilePictureUrl")]
+        public string? ProfilePictureUrl { get; set; }
+
+        [JsonPropertyName("coverImageUrl")]
+        public string? CoverImageUrl { get; set; }
+
+        [JsonPropertyName("bio")]
+        public string? Bio { get; set; }
+
+        [JsonPropertyName("about")]
+        public string? About { get; set; }
+
+        [JsonPropertyName("isProfilePrivate")]
+        public bool IsProfilePrivate { get; set; } = false;
+
+        [JsonPropertyName("productUpdates")]
+        public bool ProductUpdates { get; set; } = false;
+
+        [JsonPropertyName("careerTips")]
+        public bool CareerTips { get; set; } = false;
+
+        [JsonPropertyName("newCareerPathAlerts")]
+        public bool NewCareerPathAlerts { get; set; } = false;
+
+        [JsonPropertyName("promotions")]
+        public bool Promotions { get; set; } = false;
+
+        // Progress Tracking
+        [JsonPropertyName("careerPathID")]
+        public int? CareerPathID { get; set; }
+
+        [JsonPropertyName("currentDay")]
+        public int CurrentDay { get; set; } = 0;
+
+        [JsonPropertyName("lastTaskDate")]
+        public DateTime? LastTaskDate { get; set; }
+
+        [JsonPropertyName("lastKnownIP")]
+        public string? LastKnownIP { get; set; }
+
+        // Navigation
+        [JsonPropertyName("careerPath")]
+        public CareerPath? CareerPath { get; set; }
+    }
 }

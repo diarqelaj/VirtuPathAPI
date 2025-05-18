@@ -28,6 +28,73 @@ namespace VirtuPathAPI.Controllers
         {
             return await _context.Users.ToListAsync();
         }
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Identifier))
+                return BadRequest(new { error = "Email or username is required." });
+
+            var identifier = req.Identifier.Trim().ToLower();
+
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
+            if (user == null) return Unauthorized(new { error = "User not found." });
+
+            if (!string.IsNullOrWhiteSpace(req.Password))
+            {
+                if (string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    return Unauthorized(new { error = "This account uses Google authentication." });
+                }
+
+                if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+                {
+                    return Unauthorized(new { error = "Invalid password." });
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(user.PasswordHash))
+                {
+                    return Unauthorized(new { error = "Password required for this account." });
+                }
+            }
+
+            // ✅ If 2FA is enabled
+            if (user.IsTwoFactorEnabled)
+            {
+                return Ok(new { requires2FA = true });
+            }
+
+            // ✅ Login successful
+            HttpContext.Session.SetInt32("UserID", user.UserID);
+            user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
+            await _context.SaveChangesAsync();
+
+            if (req.RememberMe)
+            {
+                Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
+                {
+                    HttpOnly = false,
+                    Secure = true,
+                    SameSite = SameSiteMode.None,
+                    Expires = DateTimeOffset.UtcNow.AddMonths(1),
+                });
+            }
+
+            return Ok(new
+            {
+                userID = user.UserID,
+                username = user.Username,
+                fullName = user.FullName,
+                profilePicture = user.ProfilePictureUrl
+            });
+        }
+
+
+
+
 
         // ✅ GET user by ID
         [HttpGet("{id}")]
@@ -120,7 +187,11 @@ namespace VirtuPathAPI.Controllers
                     u.About,
                     u.ProfilePictureUrl,
                     u.CoverImageUrl,
-                    u.IsProfilePrivate
+                    u.IsProfilePrivate,
+                    u.RegistrationDate,
+                    u.IsVerified,
+                    u.VerifiedDate,
+                    u.IsOfficial 
                 })
                 .FirstOrDefaultAsync();
 
@@ -139,15 +210,21 @@ namespace VirtuPathAPI.Controllers
 
             var matches = await _context.Users
                 .Where(u => u.FullName.ToLower().Contains(name.ToLower()))
-                .Select(u => new {
+                .Select(u => new
+                {
                     u.UserID,
                     u.FullName,
-                    u.ProfilePictureUrl // <- this is required for frontend to show image
+                    u.Username, // ✅ ADD THIS
+                    u.ProfilePictureUrl,
+                    u.IsVerified,
+                    u.VerifiedDate,
+                    u.IsOfficial
                 })
                 .ToListAsync();
 
             return Ok(matches);
         }
+
 
 
     
@@ -495,7 +572,11 @@ namespace VirtuPathAPI.Controllers
         [HttpPatch("2fa")]
         public async Task<IActionResult> SetTwoFactorCode([FromBody] TwoFactorRequest req)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+            var identifier = req.Identifier.ToLower();
+
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
             if (user == null) return NotFound();
 
             user.TwoFactorCode = req.Code;
@@ -505,13 +586,18 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { success = true });
         }
+
         [HttpPost("verify-2fa")]
         public async Task<IActionResult> VerifyTwoFactor([FromBody] VerifyTwoFactorRequest req)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-            if (user == null) return Unauthorized(new { error = "User not found" });
+            var identifier = req.Identifier.ToLower();
 
-            // ✅ Proper 2FA check
+            var user = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
+
+            if (user == null)
+                return Unauthorized(new { error = "User not found" });
+
             if (user.TwoFactorCode != req.Code || user.TwoFactorCodeExpiresAt < DateTime.UtcNow)
             {
                 return Unauthorized(new { error = "Invalid or expired 2FA code" });
@@ -523,7 +609,6 @@ namespace VirtuPathAPI.Controllers
             if (ip == "::1") ip = "127.0.0.1";
             user.LastKnownIP = ip;
 
-            // ✅ Clear 2FA values
             user.TwoFactorCode = null;
             user.TwoFactorCodeExpiresAt = null;
 
@@ -545,6 +630,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { userID = user.UserID });
         }
+
         public class TextUpdateRequest
         {
             public int UserId { get; set; }
@@ -557,90 +643,18 @@ namespace VirtuPathAPI.Controllers
 
         public class TwoFactorRequest
         {
-            public string Email { get; set; }
+             public string Identifier { get; set; } 
             public string Code { get; set; }
             public DateTime ExpiresAt { get; set; } // ✅ used only when saving
         }
         public class VerifyTwoFactorRequest
         {
-            public string Email { get; set; }
+            public string Identifier { get; set; } 
             public string Code { get; set; }
             public bool RememberMe { get; set; }
         }
 
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest req)
-        {
-            // ✅ Validate input
-            if (string.IsNullOrWhiteSpace(req.Identifier) || string.IsNullOrWhiteSpace(req.Password))
-            {
-                return BadRequest(new { error = "Identifier and password are required." });
-            }
-
-            // ✅ Normalize input
-            var identifier = req.Identifier.Trim().ToLower();
-
-            // ✅ Find user by email or username
-            var user = await _context.Users.FirstOrDefaultAsync(u =>
-                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
-
-            if (user == null)
-                return Unauthorized(new { error = "Invalid email/username or password." });
-
-            // ✅ Validate password (unless it's a Google login without password hash)
-            if (!string.IsNullOrEmpty(user.PasswordHash))
-            {
-                bool isPasswordValid = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
-                if (!isPasswordValid)
-                    return Unauthorized(new { error = "Invalid email/username or password." });
-            }
-            else
-            {
-                return Unauthorized(new { error = "Password required for this account." });
-            }
-
-            // ✅ If 2FA is enabled, require verification first
-            if (user.IsTwoFactorEnabled)
-            {
-                return Ok(new { requires2FA = true });
-            }
-
-            // ✅ Login success – set session
-            HttpContext.Session.SetInt32("UserID", user.UserID);
-
-            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-            if (ip == "::1") ip = "127.0.0.1";
-            user.LastKnownIP = ip;
-            await _context.SaveChangesAsync();
-
-            // ✅ Optional: Remember Me cookie
-            if (req.RememberMe)
-            {
-                Response.Cookies.Append(
-                    "VirtuPathRemember",
-                    user.UserID.ToString(),
-                    new CookieOptions
-                    {
-                        HttpOnly = false,
-                        Secure = true,
-                        SameSite = SameSiteMode.None,
-                        Expires = DateTimeOffset.UtcNow.AddMonths(1),
-                    });
-            }
-
-            return Ok(new
-            {
-                userID = user.UserID,
-                username = user.Username,
-                fullName = user.FullName,
-                profilePicture = user.ProfilePictureUrl
-            });
-
-        }
-
-
-
-
+     
 
 
         [HttpPost("logout")]
@@ -670,6 +684,67 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(user);
         }
+        [HttpPost("verify/{userId}")]
+        public async Task<IActionResult> VerifyUser(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsVerified = true;
+            user.VerifiedDate = DateTime.UtcNow; // ✅ also record the date
+            await _context.SaveChangesAsync();
+
+            return Ok("User marked as verified.");
+        }
+        [HttpPost("unverify/{userId}")]
+        public async Task<IActionResult> UnverifyUser(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsVerified = false;
+            user.VerifiedDate = null;
+            await _context.SaveChangesAsync();
+
+            return Ok("User unverified.");
+        }
+        [HttpPost("official/{userId}")]
+        public async Task<IActionResult> MakeOfficial(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsOfficial = true;
+
+            // ✅ Also store verified date for official accounts
+            user.VerifiedDate = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok("User marked as official.");
+        }
+
+        [HttpPost("unofficial/{userId}")]
+        public async Task<IActionResult> RemoveOfficial(int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound();
+
+            user.IsOfficial = false;
+
+            // Optional: clear verified date too
+            user.VerifiedDate = null;
+
+            await _context.SaveChangesAsync();
+
+            return Ok("Official badge removed.");
+        }
+
+
+
+
+
+
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
         {
@@ -706,10 +781,12 @@ namespace VirtuPathAPI.Controllers
 
     public class LoginRequest
     {
-        public string Identifier { get; set; } // can be username or email
-        public string Password { get; set; }
+        public string Identifier { get; set; } // email or username
+        public string? Password { get; set; }
         public bool RememberMe { get; set; }
+        public bool IsGoogleLogin { get; set; } // NEW
     }
+
 
     public class ChangePasswordRequest
 {
