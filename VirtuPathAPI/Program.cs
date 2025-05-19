@@ -41,7 +41,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins("https://virtu-path-ai.vercel.app")
+        p.WithOrigins("https://virtu-path-ai.vercel.app", "https://localhost:7072")
          .AllowCredentials()
          .AllowAnyHeader()
          .AllowAnyMethod();
@@ -49,7 +49,7 @@ builder.Services.AddCors(options =>
 
     options.AddPolicy("AllowSwagger", p =>
     {
-        p.WithOrigins("https://localhost:7072", "https://localhost:3000", "https://localhost:3000")
+        p.WithOrigins("https://localhost:7072", "https://localhost:3000", "http://localhost:3000",  "http://localhost:5249")
          .AllowAnyHeader()
          .AllowAnyMethod()
          .AllowCredentials();

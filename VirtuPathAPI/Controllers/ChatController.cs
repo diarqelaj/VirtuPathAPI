@@ -124,9 +124,14 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { edited = true });
         }
+        public class EmojiDto
+        {
+            public string Emoji { get; set; } = string.Empty;
+        }
 
+        
         [HttpPatch("react/{messageId:int}")]
-        public async Task<IActionResult> ReactToMessage(int messageId, [FromBody] string emoji)
+        public async Task<IActionResult> ReactToMessage(int messageId, [FromBody] EmojiDto body)
         {
             int? me = GetCurrentUserId();
             if (me is null) return Unauthorized();
@@ -137,11 +142,45 @@ namespace VirtuPathAPI.Controllers
             if (message.ReceiverId != me && message.SenderId != me)
                 return Forbid();
 
-            message.ReactionEmoji = emoji;
+            var existing = await _context.MessageReactions
+                .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me);
+
+            if (existing != null)
+            {
+                existing.Emoji = body.Emoji;
+            }
+            else
+            {
+                _context.MessageReactions.Add(new MessageReaction
+                {
+                    MessageId = messageId,
+                    UserId = me.Value,
+                    Emoji = body.Emoji
+                });
+            }
+
             await _context.SaveChangesAsync();
 
             return Ok(new { reacted = true });
         }
+        [HttpGet("react/{messageId:int}")]
+        public async Task<IActionResult> GetReactionForMessage(int messageId)
+        {
+            var reactions = await _context.MessageReactions
+                .Where(r => r.MessageId == messageId)
+                .Select(r => new
+                {
+                    r.UserId,
+                    r.Emoji,
+                    r.User.FullName,
+                    r.User.ProfilePictureUrl
+                })
+                .ToListAsync();
+
+            return Ok(reactions);
+        }
+
+
         [HttpDelete("react/{messageId:int}")]
         public async Task<IActionResult> RemoveReaction(int messageId)
         {
@@ -149,15 +188,19 @@ namespace VirtuPathAPI.Controllers
             if (me is null) return Unauthorized();
 
             var reaction = await _context.MessageReactions
-                .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me.Value);
+                .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me);
 
-            if (reaction == null) return NotFound("No reaction to remove.");
+            if (reaction == null) return NotFound();
 
             _context.MessageReactions.Remove(reaction);
             await _context.SaveChangesAsync();
 
             return Ok(new { removed = true });
         }
+
+
+
+
 
 
         [HttpGet("messages/by-username/{username}")]
