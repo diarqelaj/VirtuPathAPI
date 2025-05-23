@@ -13,6 +13,8 @@ namespace VirtuPathAPI.Models
         public DbSet<UserMute> UserMutes { get; set; }
         public DbSet<UserPin> UserPins { get; set; }
         public DbSet<MessageReaction> MessageReactions { get; set; }
+        public DbSet<ChatRequest> ChatRequests { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

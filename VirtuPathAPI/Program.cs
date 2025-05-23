@@ -23,11 +23,9 @@ builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
 
-
+// Your ChatContext
 builder.Services.AddDbContext<ChatContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
-
-// 👇 ChatContext uses different connection string
 
 //------------------------------------------------------------
 // 2) SIGNALR
@@ -41,18 +39,26 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins("https://virtu-path-ai.vercel.app", "https://localhost:7072")
-         .AllowCredentials()
-         .AllowAnyHeader()
-         .AllowAnyMethod();
+        p.WithOrigins(
+            "https://virtu-path-ai.vercel.app",
+            "https://localhost:7072"
+        )
+        .AllowCredentials()
+        .AllowAnyHeader()
+        .AllowAnyMethod();
     });
 
     options.AddPolicy("AllowSwagger", p =>
     {
-        p.WithOrigins("https://localhost:7072", "https://localhost:3000", "http://localhost:3000",  "http://localhost:5249")
-         .AllowAnyHeader()
-         .AllowAnyMethod()
-         .AllowCredentials();
+        p.WithOrigins(
+            "https://localhost:7072",
+            "https://localhost:3000",
+            "http://localhost:3000",
+            "http://localhost:5249"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials();
     });
 });
 
@@ -127,7 +133,10 @@ app.Use(async (ctx, next) =>
 
 app.UseAuthorization();
 
+// Map your API controllers…
 app.MapControllers();
+
+// …and wire up SignalR here:
 app.MapHub<ChatHub>("/chathub"); // ✅ SignalR endpoint
 
 app.Run();
