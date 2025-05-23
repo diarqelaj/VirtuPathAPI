@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using VirtuPathAPI.Models;
 using VirtuPathAPI.Hubs;
 using VirtuPathAPI.Data;
+using Microsoft.AspNetCore.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,11 @@ builder.Services
     options.PayloadSerializerOptions.DictionaryKeyPolicy  = JsonNamingPolicy.CamelCase;
   });
 
+// allow us to read the session inside SignalR
+builder.Services.AddHttpContextAccessor();
+
+// hook SignalR’s UserIdentifier to our session “UserID”
+builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
 //------------------------------------------------------------
 // 3) CORS Policies
 //------------------------------------------------------------

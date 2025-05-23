@@ -92,6 +92,59 @@ public class ChatHub : Hub
         await Clients.Caller
             .SendAsync("ChatRequestAccepted", dto);
     }
+    
+    // ─── TYPING INDICATOR ────────────────────────────
+    public async Task Typing(int toUserId)
+    {
+        var me = GetCurrentUserId()?.ToString();
+        if (me == null) throw new HubException("Not logged in.");
+        await Clients.User(toUserId.ToString())
+                     .SendAsync("UserTyping", me);
+    }
+
+    public async Task StopTyping(int toUserId)
+    {
+        var me = GetCurrentUserId()?.ToString();
+        if (me == null) throw new HubException("Not logged in.");
+        await Clients.User(toUserId.ToString())
+                     .SendAsync("UserStopTyping", me);
+    }
+
+    // ─── PRESENCE ────────────────────────────────────
+    public override async Task OnConnectedAsync()
+    {
+        var me = GetCurrentUserId()?.ToString();
+        if (me != null)
+        {
+            // tell all of my friends I’m online
+            var friends = await GetFriendIds(me);
+            foreach (var f in friends)
+                await Clients.User(f).SendAsync("UserOnline", me);
+        }
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? ex)
+    {
+        var me = GetCurrentUserId()?.ToString();
+        if (me != null)
+        {
+            var friends = await GetFriendIds(me);
+            foreach (var f in friends)
+                await Clients.User(f).SendAsync("UserOffline", me);
+        }
+        await base.OnDisconnectedAsync(ex);
+    }
+
+    // helper to fetch your friend-IDs as strings
+    private async Task<IEnumerable<string>> GetFriendIds(string myUid)
+    {
+        var me = int.Parse(myUid);
+        return await _context.UserFriends
+            .Where(f => ((f.FollowerId == me) || (f.FollowedId == me)) && f.IsAccepted)
+            .Select(f => (f.FollowerId == me ? f.FollowedId : f.FollowerId).ToString())
+            .ToListAsync();
+    }
 
     // ─── 3) SEND MESSAGE ──────────────────────────────
     public async Task SendMessage(int receiverId, string message, int? replyToMessageId)
@@ -102,17 +155,19 @@ public class ChatHub : Hub
         if (!await CanChatAsync(me.Value, receiverId))
             throw new HubException("Not friends or request not accepted.");
 
-        var chat = new ChatMessage {
-            SenderId         = me.Value,
-            ReceiverId       = receiverId,
-            Message          = message,
-            SentAt           = DateTime.UtcNow,
+        var chat = new ChatMessage
+        {
+            SenderId = me.Value,
+            ReceiverId = receiverId,
+            Message = message,
+            SentAt = DateTime.UtcNow,
             ReplyToMessageId = replyToMessageId
         };
         _context.ChatMessages.Add(chat);
         await _context.SaveChangesAsync();
 
-        var dto = new {
+        var dto = new
+        {
             chat.Id,
             chat.SenderId,
             chat.ReceiverId,
@@ -236,19 +291,29 @@ public class ChatHub : Hub
         var me = GetCurrentUserId();
         if (me is null) throw new HubException("Not logged in.");
 
+        // 1) load the reaction
         var reaction = await _context.MessageReactions
-            .FirstOrDefaultAsync(r =>
-                r.MessageId == messageId &&
-                r.UserId    == me.Value);
+            .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == me.Value);
+        if (reaction == null) throw new HubException("Reaction not found.");
 
-        if (reaction == null) throw new HubException("Not found.");
+        // 2) load the chat message so we know who to notify
+        var chat = await _context.ChatMessages
+            .Where(m => m.Id == messageId)
+            .Select(m => new { m.SenderId, m.ReceiverId })
+            .FirstOrDefaultAsync();
+        if (chat == null) throw new HubException("Message not found.");
 
+        // 3) delete & save
         _context.MessageReactions.Remove(reaction);
         await _context.SaveChangesAsync();
 
-        await Clients.All.SendAsync("MessageReactionRemoved", new {
-            MessageId = messageId,
-            UserId    = me.Value
-        });
+        var dto = new { MessageId = messageId, UserId = me.Value };
+
+        // 4) notify only the two users
+        await Clients.User(chat.SenderId.ToString())
+                    .SendAsync("MessageReactionRemoved", dto);
+        await Clients.User(chat.ReceiverId.ToString())
+                    .SendAsync("MessageReactionRemoved", dto);
     }
+
 }
