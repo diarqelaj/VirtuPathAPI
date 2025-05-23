@@ -7,6 +7,7 @@ using VirtuPathAPI.Models;
 using VirtuPathAPI.Hubs;
 using VirtuPathAPI.Data;
 using Microsoft.AspNetCore.SignalR;
+using VirtuPathAPI.Controllers; 
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,10 @@ builder.Services.AddDbContext<ChatContext>(options =>
 //------------------------------------------------------------
 // 2) SIGNALR
 //------------------------------------------------------------
+
+
+builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
+builder.Services.AddHttpContextAccessor();
 builder.Services
   .AddSignalR()
   .AddJsonProtocol(options => {
@@ -39,7 +44,7 @@ builder.Services
   });
 
 // allow us to read the session inside SignalR
-builder.Services.AddHttpContextAccessor();
+
 
 // hook SignalR’s UserIdentifier to our session “UserID”
 builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
