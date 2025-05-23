@@ -129,18 +129,23 @@ namespace VirtuPathAPI.Hubs
             var userId = GetCurrentUserId();
             if (userId != null)
             {
-                // register this connection
                 await _presence.UserConnectedAsync(userId.Value, Context.ConnectionId);
 
-                // notify friends
                 var friends = await GetFriendIds(userId.Value);
+
+                // 1) Tell my friends I’m online
                 foreach (var f in friends)
                     await Clients.User(f.ToString())
-                                 .SendAsync("UserOnline", userId.Value);
+                                .SendAsync("UserOnline", userId.Value);
+
+                // 2) Tell me **which of them** are already online
+                var onlineFriends = await _presence.GetOnlineFriendsAsync(userId.Value, friends);
+                await Clients.Caller.SendAsync("OnlineFriends", onlineFriends);
             }
 
             await base.OnConnectedAsync();
         }
+
 
         public override async Task OnDisconnectedAsync(Exception? ex)
         {
