@@ -30,7 +30,12 @@ builder.Services.AddDbContext<ChatContext>(options =>
 //------------------------------------------------------------
 // 2) SIGNALR
 //------------------------------------------------------------
-builder.Services.AddSignalR();
+builder.Services
+  .AddSignalR()
+  .AddJsonProtocol(options => {
+    options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.PayloadSerializerOptions.DictionaryKeyPolicy  = JsonNamingPolicy.CamelCase;
+  });
 
 //------------------------------------------------------------
 // 3) CORS Policies
