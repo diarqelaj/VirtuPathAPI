@@ -42,12 +42,18 @@ namespace VirtuPathAPI.Models
         [JsonPropertyName("twoFactorCodeExpiresAt")]
         public DateTime? TwoFactorCodeExpiresAt { get; set; }
 
-        // Profile
+        // Profile images
         [JsonPropertyName("profilePictureUrl")]
         public string? ProfilePictureUrl { get; set; }
 
+        [JsonPropertyName("profilePicturePublicId")]
+        public string? ProfilePicturePublicId { get; set; }
+
         [JsonPropertyName("coverImageUrl")]
         public string? CoverImageUrl { get; set; }
+
+        [JsonPropertyName("coverImagePublicId")]
+        public string? CoverImagePublicId { get; set; }
 
         [JsonPropertyName("bio")]
         public string? Bio { get; set; }

@@ -8,6 +8,11 @@ using VirtuPathAPI.Hubs;
 using VirtuPathAPI.Data;
 using Microsoft.AspNetCore.SignalR;
 using VirtuPathAPI.Controllers; 
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using dotenv.net;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,6 +53,15 @@ builder.Services
 
 // hook SignalR’s UserIdentifier to our session “UserID”
 builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
+// Set your Cloudinary credentials
+//=================================
+
+DotEnv.Load(options: new DotEnvOptions(probeForEnv: true));
+var rawUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL")?.Trim();
+var cloudinary = new Cloudinary(rawUrl);
+
+cloudinary.Api.Secure = true;
+builder.Services.AddSingleton(cloudinary);
 //------------------------------------------------------------
 // 3) CORS Policies
 //------------------------------------------------------------
