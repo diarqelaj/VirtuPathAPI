@@ -7,8 +7,9 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Webp;
 using CloudinaryDotNet;            
-using CloudinaryDotNet.Actions; 
+using CloudinaryDotNet.Actions;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 
 namespace VirtuPathAPI.Controllers
@@ -39,18 +40,28 @@ namespace VirtuPathAPI.Controllers
             public JsonElement PublicKeyJwk { get; set; }
         }
 
-        [HttpPost("public-key")]
+       [HttpPost("public-key")]
         public async Task<IActionResult> SetPublicKey([FromBody] PublicKeyRequest req)
         {
             var user = await _context.Users.FindAsync(req.UserId);
             if (user == null) return NotFound(new { error = "User not found" });
 
-            // store the raw JSON text of the JWK
-            user.PublicKeyJwk = req.PublicKeyJwk.GetRawText();
+            // ── 1) Parse the incoming JWK
+            var root = JsonNode.Parse(req.PublicKeyJwk.GetRawText())!.AsObject();
+
+            // ── 2) Drop the key_ops member (if present)
+            root.Remove("key_ops");
+
+            //    (optional) force "ext": true so browsers can import it either way
+            root["ext"] = true;
+
+            // ── 3) Store the cleaned-up JWK
+            user.PublicKeyJwk = root.ToJsonString();
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Public key saved." });
         }
+        
 
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)

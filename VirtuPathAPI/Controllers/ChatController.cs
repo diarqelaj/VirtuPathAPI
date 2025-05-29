@@ -63,27 +63,44 @@ namespace VirtuPathAPI.Controllers
         [HttpPost("send")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
         {
-            int? me = GetCurrentUserId();
-            if (me is null) return Unauthorized("User not logged in.");
-
-            if (!await AreFriendsAsync(me.Value, req.ReceiverId))
-                return Forbid("Not friends");
-
-            var message = new ChatMessage
+            try
             {
-                SenderId         = me.Value,
-                ReceiverId       = req.ReceiverId,
-                Message          = req.Cipher,       // ← store encrypted blob
-                Iv               = req.Iv,           // ← store the IV
-                SentAt           = DateTime.UtcNow,
-                ReplyToMessageId = req.ReplyToMessageId,
-                ReactionEmoji    = req.ReactionEmoji
-            };
+                int? me = GetCurrentUserId();
+                if (me is null) return Unauthorized("User not logged in.");
 
-            _context.ChatMessages.Add(message);
-            await _context.SaveChangesAsync();
+                if (!await AreFriendsAsync(me.Value, req.ReceiverId))
+                    return Forbid("Not friends");
 
-            return Ok(new { success = true });
+                var message = new ChatMessage
+                {
+                    SenderId = me.Value,
+                    ReceiverId = req.ReceiverId,
+                    Message = req.Cipher,       // ← store encrypted blob
+                    Iv = req.Iv,           // ← store the IV
+                    SentAt = DateTime.UtcNow,
+                    ReplyToMessageId = req.ReplyToMessageId,
+                    ReactionEmoji = req.ReactionEmoji
+                };
+
+                _context.ChatMessages.Add(message);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("DB write failed ⇒ " + ex);   // or use Serilog
+                    throw;   // lets the client receive the HubException
+                }
+
+                return Ok(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                // TEMP: write to console or Serilog so you know *why* it failed
+                Console.WriteLine("SendMessage DB error ⇒ " + ex);
+                return StatusCode(500, ex.Message);
+            }  
         }
 
 

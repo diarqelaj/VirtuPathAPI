@@ -174,7 +174,7 @@ namespace VirtuPathAPI.Hubs
                 .ToListAsync();
         }
 
-       public async Task SendMessage(
+    public async Task SendMessage(
     int receiverId,
     string cipherB64,
     string ivB64,
@@ -199,7 +199,15 @@ namespace VirtuPathAPI.Hubs
         ReplyToMessageId = replyToMessageId
     };
     _context.ChatMessages.Add(chat);
-    await _context.SaveChangesAsync();
+    try
+    {
+        await _context.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("DB write failed ⇒ " + ex);   // or use Serilog
+        throw;   // lets the client receive the HubException
+    }
 
     var dto = new {
         chat.Id,
@@ -244,6 +252,15 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageEdited", dto);
             await Clients.User(msg.ReceiverId.ToString())
                          .SendAsync("MessageEdited", dto);
+        }
+        public async Task NotifyKeyUpdate()
+        {
+            var me = GetCurrentUserId();
+            if (me is null) return;
+
+            var friends = await GetFriendIds(me.Value);
+            foreach (var f in friends)
+                await Clients.User(f.ToString()).SendAsync("FriendKeyUpdated", me.Value);
         }
 
         // ─── 5) DELETE FOR SENDER ─────────────────────────
