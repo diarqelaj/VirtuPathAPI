@@ -8,6 +8,7 @@ using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Webp;
 using CloudinaryDotNet;            
 using CloudinaryDotNet.Actions; 
+using System.Text.Json;
 
 
 namespace VirtuPathAPI.Controllers
@@ -25,12 +26,32 @@ namespace VirtuPathAPI.Controllers
             _cloudinary = cloudinary;
         }
 
+
         // ✅ GET all users (admin/debug only)
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetUsers()
         {
             return await _context.Users.ToListAsync();
         }
+         public class PublicKeyRequest
+        {
+            public int UserId { get; set; }
+            public JsonElement PublicKeyJwk { get; set; }
+        }
+
+        [HttpPost("public-key")]
+        public async Task<IActionResult> SetPublicKey([FromBody] PublicKeyRequest req)
+        {
+            var user = await _context.Users.FindAsync(req.UserId);
+            if (user == null) return NotFound(new { error = "User not found" });
+
+            // store the raw JSON text of the JWK
+            user.PublicKeyJwk = req.PublicKeyJwk.GetRawText();
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Public key saved." });
+        }
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
@@ -167,8 +188,7 @@ namespace VirtuPathAPI.Controllers
 
             return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
         }
-
-
+       
 
 
         [HttpGet("by-username/{username}")]
@@ -177,32 +197,38 @@ namespace VirtuPathAPI.Controllers
             if (string.IsNullOrWhiteSpace(username))
                 return BadRequest(new { error = "Username is required" });
 
-            string normalized = username.Trim().ToLower();
-
+            var normalized = username.Trim().ToLower();
             var user = await _context.Users
                 .Where(u => u.Username.ToLower() == normalized)
-                .Select(u => new
-                {
-                    u.UserID,
-                    u.FullName,
-                    u.Username,
-                    u.Bio,
-                    u.About,
-                    u.ProfilePictureUrl,
-                    u.CoverImageUrl,
-                    u.IsProfilePrivate,
-                    u.RegistrationDate,
-                    u.IsVerified,
-                    u.VerifiedDate,
-                    u.IsOfficial 
-                })
                 .FirstOrDefaultAsync();
 
             if (user == null)
                 return NotFound(new { error = "User not found" });
 
-            return Ok(user);
-}
+            // deserialize the stored string into a JsonElement
+            JsonElement? jwk = null;
+            if (!string.IsNullOrEmpty(user.PublicKeyJwk))
+            {
+                jwk = JsonSerializer.Deserialize<JsonElement>(user.PublicKeyJwk);
+            }
+
+            return Ok(new
+            {
+                user.UserID,
+                user.FullName,
+                user.Username,
+                user.Bio,
+                user.About,
+                user.ProfilePictureUrl,
+                user.CoverImageUrl,
+                user.IsProfilePrivate,
+                user.RegistrationDate,
+                user.IsVerified,
+                user.VerifiedDate,
+                user.IsOfficial,
+                publicKeyJwk = jwk
+            });
+        }
 
 
         [HttpGet("search")]
@@ -642,16 +668,48 @@ namespace VirtuPathAPI.Controllers
         }
 
         // ✅ GET /api/users/me — Get current session user
-        [HttpGet("me")]
+       [HttpGet("me")]
         public async Task<IActionResult> GetCurrentUser()
         {
             var userId = HttpContext.Session.GetInt32("UserID");
-            if (userId == null) return Unauthorized();
+            if (userId == null)
+                return Unauthorized();
 
             var user = await _context.Users.FindAsync(userId);
-            if (user == null) return Unauthorized();
+            if (user == null)
+                return Unauthorized();
 
-            return Ok(user);
+            // parse the stored JWK string into a real JSON object
+            JsonElement? jwk = null;
+            if (!string.IsNullOrEmpty(user.PublicKeyJwk))
+                jwk = JsonSerializer.Deserialize<JsonElement>(user.PublicKeyJwk);
+
+            return Ok(new
+            {
+                user.UserID,
+                user.FullName,
+                user.Username,
+                user.Email,
+                user.ProfilePictureUrl,
+                user.CoverImageUrl,
+                user.Bio,
+                user.About,
+                user.RegistrationDate,
+                user.IsVerified,
+                user.VerifiedDate,
+                user.IsOfficial,
+                user.IsTwoFactorEnabled,
+                user.IsProfilePrivate,
+                user.ProductUpdates,
+                user.CareerTips,
+                user.NewCareerPathAlerts,
+                user.Promotions,
+                user.CareerPathID,
+                user.CurrentDay,
+                user.LastTaskDate,
+                user.LastKnownIP,
+                publicKeyJwk = jwk
+            });
         }
         [HttpPost("verify/{userId}")]
         public async Task<IActionResult> VerifyUser(int userId)

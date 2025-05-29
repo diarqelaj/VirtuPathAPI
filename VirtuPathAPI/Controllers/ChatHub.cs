@@ -174,41 +174,51 @@ namespace VirtuPathAPI.Hubs
                 .ToListAsync();
         }
 
-        // ─── 3) SEND MESSAGE ──────────────────────────────
-        public async Task SendMessage(int receiverId, string message, int? replyToMessageId)
-        {
-            var me = GetCurrentUserId();
-            if (me is null) throw new HubException("Not logged in.");
+       public async Task SendMessage(
+    int receiverId,
+    string cipherB64,
+    string ivB64,
+    int? replyToMessageId
+)
+{
+    var me = GetCurrentUserId();
+    if (me == null) throw new HubException("Not logged in.");
+    if (!await CanChatAsync(me.Value, receiverId))
+        throw new HubException("Not friends or request not accepted.");
 
-            if (!await CanChatAsync(me.Value, receiverId))
-                throw new HubException("Not friends or request not accepted.");
+    // Now save the cipher+iv so you can rehydrate history later
+    var chat = new ChatMessage
+    {
+        SenderId         = me.Value,
+        ReceiverId       = receiverId,
+        // store the ciphertext in the Message column:
+        Message          = cipherB64,
+        // you’ll need to add an Iv column/property to your ChatMessage model:
+        Iv               = ivB64,
+        SentAt           = DateTime.UtcNow,
+        ReplyToMessageId = replyToMessageId
+    };
+    _context.ChatMessages.Add(chat);
+    await _context.SaveChangesAsync();
 
-            var chat = new ChatMessage
-            {
-                SenderId         = me.Value,
-                ReceiverId       = receiverId,
-                Message          = message,
-                SentAt           = DateTime.UtcNow,
-                ReplyToMessageId = replyToMessageId
-            };
-            _context.ChatMessages.Add(chat);
-            await _context.SaveChangesAsync();
+    var dto = new {
+        chat.Id,
+        chat.SenderId,
+        chat.ReceiverId,
+        // broadcast both fields so clients can decrypt:
+        Cipher = chat.Message,
+        Iv     = chat.Iv,
+        chat.ReplyToMessageId,
+        chat.SentAt,
+        chat.IsEdited
+    };
 
-            var dto = new {
-                chat.Id,
-                chat.SenderId,
-                chat.ReceiverId,
-                chat.Message,
-                chat.ReplyToMessageId,
-                chat.SentAt,
-                chat.IsEdited
-            };
-
-            await Clients.User(me.Value.ToString())
-                         .SendAsync("ReceiveMessage", dto);
-            await Clients.User(receiverId.ToString())
-                         .SendAsync("ReceiveMessage", dto);
-        }
+    // send back to both sides
+    await Clients.User(me.Value.ToString())
+                 .SendAsync("ReceiveMessage", dto);
+    await Clients.User(receiverId.ToString())
+                 .SendAsync("ReceiveMessage", dto);
+}
 
         // ─── 4) EDIT MESSAGE ──────────────────────────────
         public async Task EditMessage(int messageId, string newMessage)

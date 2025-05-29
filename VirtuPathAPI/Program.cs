@@ -91,7 +91,11 @@ builder.Services.AddCors(options =>
         .AllowCredentials();
     });
 });
-
+builder.Services
+       .AddControllers()
+       .AddJsonOptions(opts => {
+         opts.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+       });
 //------------------------------------------------------------
 // 4) SESSION + COOKIE POLICY
 //------------------------------------------------------------

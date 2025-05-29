@@ -32,21 +32,33 @@ namespace VirtuPathAPI.Controllers
         [HttpGet("messages/{withUserId:int}")]
         public async Task<IActionResult> GetMessages(int withUserId)
         {
-            int? me = GetCurrentUserId();
-            if (me is null) return Unauthorized("User not logged in.");
-
-            if (!await AreFriendsAsync(me.Value, withUserId))
-                return Forbid("You are not friends with this user.");
+            var me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
+            if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
 
             var messages = await _context.ChatMessages
                 .Where(m =>
-                    ((m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
-                     (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver)))
+                    (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
+                    (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver)
+                )
                 .OrderBy(m => m.SentAt)
+                .Select(m => new
+                {
+                    id                = m.Id,
+                    senderId          = m.SenderId,
+                    receiverId        = m.ReceiverId,
+                    cipher            = m.Message,       // lowercase
+                    iv                = m.Iv,            // lowercase
+                    replyToMessageId  = m.ReplyToMessageId,
+                    sentAt            = m.SentAt,
+                    isEdited          = m.IsEdited
+                })
                 .ToListAsync();
 
             return Ok(messages);
         }
+
+
 
         [HttpPost("send")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
@@ -55,16 +67,17 @@ namespace VirtuPathAPI.Controllers
             if (me is null) return Unauthorized("User not logged in.");
 
             if (!await AreFriendsAsync(me.Value, req.ReceiverId))
-                return Forbid("You are not friends with this user.");
+                return Forbid("Not friends");
 
             var message = new ChatMessage
             {
-                SenderId = me.Value,
-                ReceiverId = req.ReceiverId,
-                Message = req.Message,
-                SentAt = DateTime.UtcNow,
+                SenderId         = me.Value,
+                ReceiverId       = req.ReceiverId,
+                Message          = req.Cipher,       // ← store encrypted blob
+                Iv               = req.Iv,           // ← store the IV
+                SentAt           = DateTime.UtcNow,
                 ReplyToMessageId = req.ReplyToMessageId,
-                ReactionEmoji = req.ReactionEmoji
+                ReactionEmoji    = req.ReactionEmoji
             };
 
             _context.ChatMessages.Add(message);
@@ -72,6 +85,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { success = true });
         }
+
 
         [HttpPost("delete/{messageId:int}/sender")]
         public async Task<IActionResult> DeleteForSender(int messageId)
@@ -231,6 +245,8 @@ namespace VirtuPathAPI.Controllers
         {
             public int ReceiverId { get; set; }
             public string Message { get; set; } = string.Empty;
+            public string Cipher          { get; set; } = "";
+            public string Iv              { get; set; } = "";
             public int? ReplyToMessageId { get; set; }
             public string? ReactionEmoji { get; set; }
         }
