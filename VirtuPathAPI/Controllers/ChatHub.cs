@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -13,13 +14,17 @@ namespace VirtuPathAPI.Hubs
     {
         private readonly ChatContext _context;
         private readonly IPresenceTracker _presence;
+        private readonly RSA _rsaPrivate;  // ← server’s RSA private key
 
         public ChatHub(
             ChatContext context,
-            IPresenceTracker presenceTracker)
+            IPresenceTracker presenceTracker,
+            RSA rsaPrivate      // ← injected via DI
+        )
         {
-            _context  = context;
-            _presence = presenceTracker;
+            _context    = context;
+            _presence   = presenceTracker;
+            _rsaPrivate = rsaPrivate;
         }
 
         private int? GetCurrentUserId() =>
@@ -136,7 +141,7 @@ namespace VirtuPathAPI.Hubs
                 // 1) Tell my friends I’m online
                 foreach (var f in friends)
                     await Clients.User(f.ToString())
-                                .SendAsync("UserOnline", userId.Value);
+                                 .SendAsync("UserOnline", userId.Value);
 
                 // 2) Tell me **which of them** are already online
                 var onlineFriends = await _presence.GetOnlineFriendsAsync(userId.Value, friends);
@@ -174,59 +179,44 @@ namespace VirtuPathAPI.Hubs
                 .ToListAsync();
         }
 
-    public async Task SendMessage(
+            // ─── 3) SEND MESSAGE (HYBRID DECRYPTION + STORE PLAINTEXT) ─────────────────// ChatHub.cs  ───────────────────────────────────────────────────────────────
+   public async Task SendMessage(
     int receiverId,
-    string cipherB64,
+    string wrappedKeyForSenderB64,
+    string wrappedKeyForReceiverB64,
     string ivB64,
-    int? replyToMessageId
-)
+    string ciphertextB64,
+    string tagB64,
+    int? replyToMessageId)
 {
     var me = GetCurrentUserId();
     if (me == null) throw new HubException("Not logged in.");
     if (!await CanChatAsync(me.Value, receiverId))
         throw new HubException("Not friends or request not accepted.");
 
-    // Now save the cipher+iv so you can rehydrate history later
+    // ✨ NO decryption, just store the blob
     var chat = new ChatMessage
     {
-        SenderId         = me.Value,
-        ReceiverId       = receiverId,
-        // store the ciphertext in the Message column:
-        Message          = cipherB64,
-        // you’ll need to add an Iv column/property to your ChatMessage model:
-        Iv               = ivB64,
-        SentAt           = DateTime.UtcNow,
-        ReplyToMessageId = replyToMessageId
+        SenderId             = me.Value,
+        ReceiverId           = receiverId,
+        WrappedKeyForSender  = wrappedKeyForSenderB64,
+        WrappedKeyForReceiver= wrappedKeyForReceiverB64,
+        Iv                   = ivB64,
+        Tag                  = tagB64,
+        Message              = ciphertextB64,
+        SentAt               = DateTime.UtcNow,
+        ReplyToMessageId     = replyToMessageId
     };
     _context.ChatMessages.Add(chat);
-    try
-    {
-        await _context.SaveChangesAsync();
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine("DB write failed ⇒ " + ex);   // or use Serilog
-        throw;   // lets the client receive the HubException
-    }
+    await _context.SaveChangesAsync();
 
-    var dto = new {
-        chat.Id,
-        chat.SenderId,
-        chat.ReceiverId,
-        // broadcast both fields so clients can decrypt:
-        Cipher = chat.Message,
-        Iv     = chat.Iv,
-        chat.ReplyToMessageId,
-        chat.SentAt,
-        chat.IsEdited
-    };
-
-    // send back to both sides
-    await Clients.User(me.Value.ToString())
-                 .SendAsync("ReceiveMessage", dto);
+    // broadcast **encrypted**; each side will later pick its own wrapped-key
     await Clients.User(receiverId.ToString())
-                 .SendAsync("ReceiveMessage", dto);
+                 .SendAsync("ReceiveEncryptedMessage", chat);   // or a slim DTO
+    await Clients.Caller
+                 .SendAsync("ReceiveEncryptedMessage", chat);
 }
+
 
         // ─── 4) EDIT MESSAGE ──────────────────────────────
         public async Task EditMessage(int messageId, string newMessage)
@@ -252,15 +242,6 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageEdited", dto);
             await Clients.User(msg.ReceiverId.ToString())
                          .SendAsync("MessageEdited", dto);
-        }
-        public async Task NotifyKeyUpdate()
-        {
-            var me = GetCurrentUserId();
-            if (me is null) return;
-
-            var friends = await GetFriendIds(me.Value);
-            foreach (var f in friends)
-                await Clients.User(f.ToString()).SendAsync("FriendKeyUpdated", me.Value);
         }
 
         // ─── 5) DELETE FOR SENDER ─────────────────────────

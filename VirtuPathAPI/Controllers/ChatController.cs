@@ -42,16 +42,18 @@ namespace VirtuPathAPI.Controllers
                     (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver)
                 )
                 .OrderBy(m => m.SentAt)
-                .Select(m => new
-                {
-                    id                = m.Id,
-                    senderId          = m.SenderId,
-                    receiverId        = m.ReceiverId,
-                    cipher            = m.Message,       // lowercase
-                    iv                = m.Iv,            // lowercase
-                    replyToMessageId  = m.ReplyToMessageId,
-                    sentAt            = m.SentAt,
-                    isEdited          = m.IsEdited
+                .Select(m => new {
+                    id         = m.Id,
+                    senderId   = m.SenderId,
+                    receiverId = m.ReceiverId,
+                    wrappedKeyForSenderB64   = m.WrappedKeyForSender,
+                    wrappedKeyForReceiverB64 = m.WrappedKeyForReceiver,
+                    ivB64         = m.Iv,
+                    ciphertextB64 = m.Message,
+                    tagB64        = m.Tag,
+                    replyToMessageId = m.ReplyToMessageId,
+                    sentAt           = m.SentAt,
+                    isEdited         = m.IsEdited
                 })
                 .ToListAsync();
 
@@ -60,48 +62,29 @@ namespace VirtuPathAPI.Controllers
 
 
 
-        [HttpPost("send")]
-        public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
-        {
-            try
-            {
-                int? me = GetCurrentUserId();
-                if (me is null) return Unauthorized("User not logged in.");
+       [HttpPost("send")]
+public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
+{
+    int? me = GetCurrentUserId();
+    if (me is null) return Unauthorized();
+    if (!await AreFriendsAsync(me.Value, req.ReceiverId)) return Forbid();
 
-                if (!await AreFriendsAsync(me.Value, req.ReceiverId))
-                    return Forbid("Not friends");
-
-                var message = new ChatMessage
-                {
-                    SenderId = me.Value,
-                    ReceiverId = req.ReceiverId,
-                    Message = req.Cipher,       // ← store encrypted blob
-                    Iv = req.Iv,           // ← store the IV
-                    SentAt = DateTime.UtcNow,
-                    ReplyToMessageId = req.ReplyToMessageId,
-                    ReactionEmoji = req.ReactionEmoji
-                };
-
-                _context.ChatMessages.Add(message);
-                try
-                {
-                    await _context.SaveChangesAsync();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("DB write failed ⇒ " + ex);   // or use Serilog
-                    throw;   // lets the client receive the HubException
-                }
-
-                return Ok(new { success = true });
-            }
-            catch (Exception ex)
-            {
-                // TEMP: write to console or Serilog so you know *why* it failed
-                Console.WriteLine("SendMessage DB error ⇒ " + ex);
-                return StatusCode(500, ex.Message);
-            }  
-        }
+    var chat = new ChatMessage
+    {
+        SenderId             = me.Value,
+        ReceiverId           = req.ReceiverId,
+        WrappedKeyForSender  = req.WrappedKeyForSenderB64,
+        WrappedKeyForReceiver= req.WrappedKeyForReceiverB64,
+        Iv                   = req.IvB64,
+        Tag                  = req.TagB64,
+        Message              = req.CiphertextB64,
+        SentAt               = DateTime.UtcNow,
+        ReplyToMessageId     = req.ReplyToMessageId
+    };
+    _context.ChatMessages.Add(chat);
+    await _context.SaveChangesAsync();
+    return Ok(new { chat.Id });
+}
 
 
         [HttpPost("delete/{messageId:int}/sender")]
@@ -242,38 +225,61 @@ namespace VirtuPathAPI.Controllers
             return await GetMessages(friendId.Value);
         }
 
-        [HttpPost("send/by-username")]
-        public async Task<IActionResult> SendMessageByUsername([FromBody] SendMessageByUsernameRequest req)
-        {
-            int? friendId = await UsernameToIdAsync(req.ReceiverUsername);
-            if (friendId is null) return NotFound("User not found.");
+       [HttpPost("send/by-username")]
+public async Task<IActionResult> SendMessageByUsername(
+    [FromBody] SendMessageByUsernameRequest req)
+{
+    int? friendId = await UsernameToIdAsync(req.ReceiverUsername);
+    if (friendId is null) return NotFound("User not found.");
 
-            var idRequest = new SendMessageRequest
-            {
-                ReceiverId = friendId.Value,
-                Message = req.Message,
-                ReplyToMessageId = req.ReplyToMessageId,
-                ReactionEmoji = req.ReactionEmoji
-            };
-            return await SendMessage(idRequest);
-        }
+    var idRequest = new SendMessageRequest
+    {
+        ReceiverId            = friendId.Value,
 
-        public class SendMessageRequest
-        {
-            public int ReceiverId { get; set; }
-            public string Message { get; set; } = string.Empty;
-            public string Cipher          { get; set; } = "";
-            public string Iv              { get; set; } = "";
-            public int? ReplyToMessageId { get; set; }
-            public string? ReactionEmoji { get; set; }
-        }
+        // pass the encrypted blob straight through
+        WrappedKeyForSenderB64   = req.WrappedKeyForSenderB64,
+        WrappedKeyForReceiverB64 = req.WrappedKeyForReceiverB64,
+        IvB64                    = req.IvB64,
+        CiphertextB64            = req.CiphertextB64,
+        TagB64                   = req.TagB64,
+
+        // optional extras
+        ReplyToMessageId      = req.ReplyToMessageId,
+        ReactionEmoji         = req.ReactionEmoji
+    };
+
+    return await SendMessage(idRequest);
+}
+      public class SendMessageRequest
+{
+    public int    ReceiverId               { get; set; }
+
+    // ── encrypted payload ───────────────
+    public string WrappedKeyForSenderB64   { get; set; } = "";
+    public string WrappedKeyForReceiverB64 { get; set; } = "";
+    public string IvB64                    { get; set; } = "";
+    public string CiphertextB64            { get; set; } = "";
+    public string TagB64                   { get; set; } = "";
+
+    // ── extras (optional) ───────────────
+    public int?   ReplyToMessageId         { get; set; }
+    public string? ReactionEmoji           { get; set; }   // 👍 keep
+}
 
         public class SendMessageByUsernameRequest
-        {
-            public string ReceiverUsername { get; set; } = string.Empty;
-            public string Message { get; set; } = string.Empty;
-            public int? ReplyToMessageId { get; set; }
-            public string? ReactionEmoji { get; set; }
-        }
+{
+    public string ReceiverUsername          { get; set; } = string.Empty;
+
+    // ── encrypted payload ────────────────────────────
+    public string WrappedKeyForSenderB64    { get; set; } = "";
+    public string WrappedKeyForReceiverB64  { get; set; } = "";
+    public string IvB64                     { get; set; } = "";
+    public string CiphertextB64             { get; set; } = "";
+    public string TagB64                    { get; set; } = "";
+
+    // ── extras (optional) ────────────────────────────
+    public int?   ReplyToMessageId          { get; set; }
+    public string? ReactionEmoji            { get; set; }
+}
     }
 }

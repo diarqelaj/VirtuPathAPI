@@ -10,7 +10,9 @@ using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Security.Claims;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -39,6 +41,7 @@ namespace VirtuPathAPI.Controllers
             public int UserId { get; set; }
             public JsonElement PublicKeyJwk { get; set; }
         }
+        
 
        [HttpPost("public-key")]
         public async Task<IActionResult> SetPublicKey([FromBody] PublicKeyRequest req)
@@ -63,6 +66,7 @@ namespace VirtuPathAPI.Controllers
         }
         
 
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
@@ -70,59 +74,80 @@ namespace VirtuPathAPI.Controllers
                 return BadRequest(new { error = "Email or username is required." });
 
             var identifier = req.Identifier.Trim().ToLower();
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == identifier
+                                    || u.Username.ToLower() == identifier);
+            if (user == null)
+                return Unauthorized(new { error = "User not found." });
 
-            var user = await _context.Users.FirstOrDefaultAsync(u =>
-                u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
-
-            if (user == null) return Unauthorized(new { error = "User not found." });
-
+            // ── Password checks ─────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(req.Password))
             {
                 if (string.IsNullOrEmpty(user.PasswordHash))
-                {
                     return Unauthorized(new { error = "This account uses Google authentication." });
-                }
-
                 if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                {
                     return Unauthorized(new { error = "Invalid password." });
-                }
             }
             else
             {
                 if (!string.IsNullOrEmpty(user.PasswordHash))
-                {
                     return Unauthorized(new { error = "Password required for this account." });
-                }
             }
 
-            // ✅ If 2FA is enabled
+            // ── 2FA handshake ────────────────────────────────────────────────
             if (user.IsTwoFactorEnabled)
-            {
                 return Ok(new { requires2FA = true });
-            }
 
-            // ✅ Login successful
+            // ── FULL LOGIN ──────────────────────────────────────────────────
+
+            // 1) Build a ClaimsPrincipal
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.UserID.ToString()),
+                new Claim("sub",                     user.UserID.ToString()),
+                // you can add role claims here if you need:
+                // new Claim(ClaimTypes.Role, user.IsAdmin ? "Admin" : "User")
+            };
+            var identity  = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var principal = new ClaimsPrincipal(identity);
+
+            // 2) Issue the auth cookie
+            await HttpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                principal,
+                new AuthenticationProperties
+                {
+                    IsPersistent = req.RememberMe,
+                    ExpiresUtc   = req.RememberMe
+                        ? DateTimeOffset.UtcNow.AddMonths(1)
+                        : (DateTimeOffset?)null
+                });
+
+            // 3) (Optionally) set your session + remember-me cookie
             HttpContext.Session.SetInt32("UserID", user.UserID);
             user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
             await _context.SaveChangesAsync();
 
             if (req.RememberMe)
             {
-                Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
-                {
-                    HttpOnly = false,
-                    Secure = true,
-                    SameSite = SameSiteMode.None,
-                    Expires = DateTimeOffset.UtcNow.AddMonths(1),
-                });
+                Response.Cookies.Append(
+                    "VirtuPathRemember",
+                    user.UserID.ToString(),
+                    new CookieOptions
+                    {
+                        HttpOnly = false,
+                        Secure   = true,
+                        SameSite = SameSiteMode.None,
+                        Expires  = DateTimeOffset.UtcNow.AddMonths(1)
+                    });
             }
 
+            // 4) Return your user DTO
             return Ok(new
             {
-                userID = user.UserID,
-                username = user.Username,
-                fullName = user.FullName,
+                userID         = user.UserID,
+                username       = user.Username,
+                fullName       = user.FullName,
                 profilePicture = user.ProfilePictureUrl
             });
         }
@@ -605,35 +630,42 @@ namespace VirtuPathAPI.Controllers
                 return Unauthorized(new { error = "User not found" });
 
             if (user.TwoFactorCode != req.Code || user.TwoFactorCodeExpiresAt < DateTime.UtcNow)
-            {
                 return Unauthorized(new { error = "Invalid or expired 2FA code" });
-            }
 
+            // ——— 1) Sign-in the cookie
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.UserID.ToString()),
+                new Claim(ClaimTypes.Name,           user.Username)
+                // add roles here if you need: new Claim(ClaimTypes.Role, "Admin")
+            };
+            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var principal = new ClaimsPrincipal(identity);
+
+            await HttpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                principal,
+                new AuthenticationProperties
+                {
+                    IsPersistent = req.RememberMe,
+                    ExpiresUtc   = req.RememberMe
+                        ? DateTimeOffset.UtcNow.AddMonths(1)
+                        : null
+                });
+
+            // ——— 2) (optional) still set your session if you rely on it elsewhere
             HttpContext.Session.SetInt32("UserID", user.UserID);
 
-            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-            if (ip == "::1") ip = "127.0.0.1";
-            user.LastKnownIP = ip;
-
-            user.TwoFactorCode = null;
-            user.TwoFactorCodeExpiresAt = null;
-
+            // ——— 3) wipe the 2FA code, update IP, persist
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString() == "::1"
+                ? "127.0.0.1"
+                : HttpContext.Connection.RemoteIpAddress?.ToString();
+            user.LastKnownIP             = ip;
+            user.TwoFactorCode           = null;
+            user.TwoFactorCodeExpiresAt  = null;
             await _context.SaveChangesAsync();
 
-            if (req.RememberMe)
-            {
-                Response.Cookies.Append(
-                    "VirtuPathRemember",
-                    user.UserID.ToString(),
-                    new CookieOptions
-                    {
-                        HttpOnly = false,
-                        Secure = true,
-                        SameSite = SameSiteMode.None,
-                        Expires = DateTimeOffset.UtcNow.AddMonths(1),
-                    });
-            }
-
+            // ——— 4) return as before
             return Ok(new { userID = user.UserID });
         }
 

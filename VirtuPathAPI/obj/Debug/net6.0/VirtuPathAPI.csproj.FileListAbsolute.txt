@@ -358,3 +358,9 @@ C:/Users/taula/OneDrive/Documents/GitHub/VirtuPathApi/VirtuPathAPI/obj/Debug/net
 /home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/SixLabors.ImageSharp.dll
 /home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/CloudinaryDotNet.dll
 /home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/dotenv.net.dll
+/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/Microsoft.AspNetCore.Authentication.JwtBearer.dll
+/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/Microsoft.AspNetCore.Cryptography.Internal.dll
+/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/Microsoft.AspNetCore.DataProtection.dll
+/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/Microsoft.AspNetCore.DataProtection.Abstractions.dll
+/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.dll
+/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/bin/Debug/net6.0/Microsoft.Extensions.Caching.Memory.dll

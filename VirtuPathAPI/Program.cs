@@ -7,12 +7,20 @@ using VirtuPathAPI.Models;
 using VirtuPathAPI.Hubs;
 using VirtuPathAPI.Data;
 using Microsoft.AspNetCore.SignalR;
-using VirtuPathAPI.Controllers; 
+using VirtuPathAPI.Controllers;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using dotenv.net;
+using Microsoft.AspNetCore.DataProtection;
 
-
+// ← NEW IMPORTS:
+using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Security.Claims;
+using Microsoft.IdentityModel.Tokens;
+using VirtuPathAPI.Utilities; // for RsaKeyLoader
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,10 +43,26 @@ builder.Services.AddDbContext<ChatContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
 
 //------------------------------------------------------------
-// 2) SIGNALR
+// 2) LOAD RSA KEYS FOR HYBRID ENCRYPTION
 //------------------------------------------------------------
+// 2.1) Register the server’s RSA public key as a JsonWebKey (JWK) for clients
+builder.Services.AddSingleton<JsonWebKey>(sp =>
+{
+    // Assumes you put rsa_public.pem in {ContentRoot}/Keys/
+    var publicPemPath = Path.Combine(builder.Environment.ContentRootPath, "Keys", "rsa_public.pem");
+    return RsaKeyLoader.GetRsaPublicJwk(publicPemPath);
+});
 
+// 2.2) Register the RSA private key so that ChatHub can decrypt wrapped AES keys
+builder.Services.AddSingleton<RSA>(sp =>
+{
+    var privatePemPath = Path.Combine(builder.Environment.ContentRootPath, "Keys", "rsa_private.pem");
+    return RsaKeyLoader.GetRsaPrivate(privatePemPath);
+});
 
+//------------------------------------------------------------
+// 3) SIGNALR
+//------------------------------------------------------------
 builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services
@@ -48,22 +72,20 @@ builder.Services
     options.PayloadSerializerOptions.DictionaryKeyPolicy  = JsonNamingPolicy.CamelCase;
   });
 
-// allow us to read the session inside SignalR
-
-
-// hook SignalR’s UserIdentifier to our session “UserID”
+// Hook SignalR’s UserIdentifier to our session “UserID”
 builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
-// Set your Cloudinary credentials
-//=================================
 
+//------------------------------------------------------------
+// 4) CLOUDINARY (unchanged)
+//------------------------------------------------------------
 DotEnv.Load(options: new DotEnvOptions(probeForEnv: true));
 var rawUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL")?.Trim();
 var cloudinary = new Cloudinary(rawUrl);
-
 cloudinary.Api.Secure = true;
 builder.Services.AddSingleton(cloudinary);
+
 //------------------------------------------------------------
-// 3) CORS Policies
+// 5) CORS POLICIES (unchanged)
 //------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
@@ -91,16 +113,18 @@ builder.Services.AddCors(options =>
         .AllowCredentials();
     });
 });
-builder.Services
-       .AddControllers()
-       .AddJsonOptions(opts => {
-         opts.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-       });
+
 //------------------------------------------------------------
-// 4) SESSION + COOKIE POLICY
+// 6) SESSION + COOKIE POLICY
 //------------------------------------------------------------
+builder.Services.AddDbContext<DataProtectionKeyContext>(opts =>
+    opts.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
 builder.Services.AddDistributedMemoryCache();
 
+builder.Services
+  .AddDataProtection()
+  .SetApplicationName("VirtuPathAPI")               // must be stable across deployments
+  .PersistKeysToDbContext<DataProtectionKeyContext>();
 builder.Services.AddSession(opt =>
 {
     opt.Cookie.Name = ".VirtuPath.Session";
@@ -111,8 +135,39 @@ builder.Services.AddSession(opt =>
     opt.IdleTimeout = TimeSpan.FromMinutes(360);
 });
 
+// ─── 6.1) COOKIE-BASED AUTHENTICATION & AUTHORIZATION ─────────────────
+builder.Services
+  .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+  .AddCookie(options =>
+  {
+      options.LoginPath       = "/api/users/login";    // API will return 401, not a redirect
+      options.Cookie.Name     = ".VirtuPath.Auth";
+      options.Cookie.HttpOnly = true;
+      options.Cookie.SameSite = SameSiteMode.None;
+      options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+
+      // Return 401 instead of redirect when unauthorized
+      options.Events.OnRedirectToLogin = context =>
+      {
+          context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+          return Task.CompletedTask;
+      };
+      options.Events.OnRedirectToAccessDenied = context =>
+      {
+          context.Response.StatusCode = StatusCodes.Status403Forbidden;
+          return Task.CompletedTask;
+      };
+  });
+
+builder.Services.AddAuthorization(options =>
+{
+    // Example "Admin" policy
+    options.AddPolicy("Admin", policy =>
+        policy.RequireClaim(ClaimTypes.Role, "Admin"));
+});
+
 //------------------------------------------------------------
-// 5) MVC / JSON / SWAGGER
+// 7) MVC / JSON / SWAGGER
 //------------------------------------------------------------
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -126,12 +181,12 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 //------------------------------------------------------------
-// 6) BUILD
+// 8) BUILD
 //------------------------------------------------------------
 var app = builder.Build();
 
 //------------------------------------------------------------
-// 7) PIPELINE
+// 9) PIPELINE
 //------------------------------------------------------------
 if (app.Environment.IsDevelopment())
 {
@@ -165,9 +220,11 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// ─── NEW: Enable authentication before authorization ───────────────────
+app.UseAuthentication();
 app.UseAuthorization();
 
-// Map your API controllers…
+
 app.MapControllers();
 
 // …and wire up SignalR here:
