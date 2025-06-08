@@ -93,6 +93,7 @@ builder.Services.AddCors(options =>
     {
         p.WithOrigins(
             "https://virtu-path-ai.vercel.app",
+            "https://virtupathapi-54vt.onrender.com", 
             "https://localhost:7072"
         )
         .AllowCredentials()
