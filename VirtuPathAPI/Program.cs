@@ -53,12 +53,16 @@ builder.Services.AddSingleton<JsonWebKey>(sp =>
     return RsaKeyLoader.GetRsaPublicJwk(publicPemPath);
 });
 
-// 2.2) Register the RSA private key so that ChatHub can decrypt wrapped AES keys
 builder.Services.AddSingleton<RSA>(sp =>
 {
-    var privatePemPath = Path.Combine(builder.Environment.ContentRootPath, "Keys", "rsa_private.pem");
-    return RsaKeyLoader.GetRsaPrivate(privatePemPath);
+    using var scope = sp.CreateScope();
+    var db    = scope.ServiceProvider.GetRequiredService<ChatContext>();
+    var vault = db.ServerKeys.Single(k => k.UserId == 1);
+    var rsa   = RSA.Create();
+    rsa.ImportFromPem(vault.EncPrivKeyPem);   // or vault.PubKeyPem, whichever is private
+    return rsa;
 });
+
 
 //------------------------------------------------------------
 // 3) SIGNALR
