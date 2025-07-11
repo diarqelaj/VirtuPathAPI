@@ -213,6 +213,7 @@ namespace VirtuPathAPI.Hubs
         }
 
         // ─── 5) SEND MESSAGE (store blob + broadcast) ────
+        // -----------------------------------------------------------------------------
         public async Task SendMessage(
             int    receiverId,
             string wrappedKeyForSenderB64,
@@ -229,44 +230,43 @@ namespace VirtuPathAPI.Hubs
 
             var chat = new ChatMessage
             {
-                SenderId             = me.Value,
-                ReceiverId           = receiverId,
-                WrappedKeyForSender  = wrappedKeyForSenderB64,
-                WrappedKeyForReceiver= wrappedKeyForReceiverB64,
-                Iv                   = ivB64,
-                Tag                  = tagB64,
-                Message              = ciphertextB64,
-                SentAt               = DateTime.UtcNow,
-                ReplyToMessageId     = replyToMessageId
+                SenderId              = me.Value,
+                ReceiverId            = receiverId,
+                WrappedKeyForSender   = wrappedKeyForSenderB64,
+                WrappedKeyForReceiver = wrappedKeyForReceiverB64,
+                Iv                    = ivB64,
+                Tag                   = tagB64,
+                Message               = ciphertextB64,
+                SentAt                = DateTime.UtcNow,
+                ReplyToMessageId      = replyToMessageId
             };
 
             _context.ChatMessages.Add(chat);
             await _context.SaveChangesAsync();
 
-            // slim DTO for the wire
-            var dto = new {
-                Id                 = chat.Id,
-                SenderId           = chat.SenderId,
-                ReceiverId         = chat.ReceiverId,
-                Iv                 = chat.Iv,
-                Tag                = chat.Tag,
-                Message            = chat.Message,
-                SentAt             = chat.SentAt,
-                ReplyToMessageId   = chat.ReplyToMessageId
+            /* full DTO — now includes the two wrapped keys 🚀 */
+            var dto = new
+            {
+                id                   = chat.Id,
+                senderId             = chat.SenderId,
+                receiverId           = chat.ReceiverId,
+                wrappedKeyForSenderB64   = chat.WrappedKeyForSender,
+                wrappedKeyForReceiverB64 = chat.WrappedKeyForReceiver,
+                ivB64                = chat.Iv,
+                ciphertextB64        = chat.Message,
+                tagB64               = chat.Tag,
+                sentAt               = chat.SentAt,
+                replyToMessageId     = chat.ReplyToMessageId
             };
 
-            // 1) tell *me* it's delivered
+            // 1) tell *me* it’s delivered
             _ = Clients.Caller.SendAsync("MessageDelivered", chat.Id);
 
-            // 2) broadcast encrypted
-            var sendTasks = new[]
-            {
-                Clients.User(receiverId.ToString())
-                       .SendAsync("ReceiveEncryptedMessage", dto),
-                Clients.Caller
-                       .SendAsync("ReceiveEncryptedMessage", dto)
-            };
-            await Task.WhenAll(sendTasks);
+            // 2) broadcast encrypted copy to both parties
+            await Task.WhenAll(
+                Clients.User(receiverId.ToString()).SendAsync("ReceiveEncryptedMessage", dto),
+                Clients.Caller.SendAsync("ReceiveEncryptedMessage", dto)
+            );
         }
 
         // ─── 6) EDIT MESSAGE ─────────────────────────────
