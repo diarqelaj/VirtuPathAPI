@@ -22,8 +22,8 @@ namespace VirtuPathAPI.Hubs
             RSA rsaPrivate      // ← injected via DI
         )
         {
-            _context    = context;
-            _presence   = presenceTracker;
+            _context = context;
+            _presence = presenceTracker;
             _rsaPrivate = rsaPrivate;
         }
 
@@ -63,16 +63,17 @@ namespace VirtuPathAPI.Hubs
 
             var req = new ChatRequest
             {
-                SenderId   = me.Value,
+                SenderId = me.Value,
                 ReceiverId = receiverId,
-                SentAt     = DateTime.UtcNow,
+                SentAt = DateTime.UtcNow,
                 IsAccepted = false
             };
             _context.ChatRequests.Add(req);
             await _context.SaveChangesAsync();
 
             await Clients.User(receiverId.ToString())
-                         .SendAsync("ReceiveChatRequest", new {
+                         .SendAsync("ReceiveChatRequest", new
+                         {
                              req.Id,
                              req.SenderId,
                              req.ReceiverId,
@@ -89,7 +90,7 @@ namespace VirtuPathAPI.Hubs
 
             var req = await _context.ChatRequests
                 .FirstOrDefaultAsync(r =>
-                    r.SenderId   == senderId &&
+                    r.SenderId == senderId &&
                     r.ReceiverId == me.Value &&
                     !r.IsAccepted);
 
@@ -98,7 +99,8 @@ namespace VirtuPathAPI.Hubs
             req.IsAccepted = true;
             await _context.SaveChangesAsync();
 
-            var dto = new {
+            var dto = new
+            {
                 req.Id,
                 req.SenderId,
                 req.ReceiverId,
@@ -179,43 +181,45 @@ namespace VirtuPathAPI.Hubs
                 .ToListAsync();
         }
 
-            // ─── 3) SEND MESSAGE (HYBRID DECRYPTION + STORE PLAINTEXT) ─────────────────// ChatHub.cs  ───────────────────────────────────────────────────────────────
-   public async Task SendMessage(
-    int receiverId,
-    string wrappedKeyForSenderB64,
-    string wrappedKeyForReceiverB64,
-    string ivB64,
-    string ciphertextB64,
-    string tagB64,
-    int? replyToMessageId)
-{
-    var me = GetCurrentUserId();
-    if (me == null) throw new HubException("Not logged in.");
-    if (!await CanChatAsync(me.Value, receiverId))
-        throw new HubException("Not friends or request not accepted.");
+        // ─── 3) SEND MESSAGE (HYBRID DECRYPTION + STORE PLAINTEXT) ─────────────────// ChatHub.cs  ───────────────────────────────────────────────────────────────
+        public async Task SendMessage(
+         int receiverId,
+         string wrappedKeyForSenderB64,
+         string wrappedKeyForReceiverB64,
+         string ivB64,
+         string ciphertextB64,
+         string tagB64,
+         int? replyToMessageId)
+        {
+            var me = GetCurrentUserId();
+            if (me == null) throw new HubException("Not logged in.");
+            if (!await CanChatAsync(me.Value, receiverId))
+                throw new HubException("Not friends or request not accepted.");
 
-    // ✨ NO decryption, just store the blob
-    var chat = new ChatMessage
-    {
-        SenderId             = me.Value,
-        ReceiverId           = receiverId,
-        WrappedKeyForSender  = wrappedKeyForSenderB64,
-        WrappedKeyForReceiver= wrappedKeyForReceiverB64,
-        Iv                   = ivB64,
-        Tag                  = tagB64,
-        Message              = ciphertextB64,
-        SentAt               = DateTime.UtcNow,
-        ReplyToMessageId     = replyToMessageId
-    };
-    _context.ChatMessages.Add(chat);
-    await _context.SaveChangesAsync();
+            // ✨ NO decryption, just store the blob
+            var chat = new ChatMessage
+            {
+                SenderId = me.Value,
+                ReceiverId = receiverId,
+                WrappedKeyForSender = wrappedKeyForSenderB64,
+                WrappedKeyForReceiver = wrappedKeyForReceiverB64,
+                Iv = ivB64,
+                Tag = tagB64,
+                Message = ciphertextB64,
+                SentAt = DateTime.UtcNow,
+                ReplyToMessageId = replyToMessageId
+            };
+            _context.ChatMessages.Add(chat);
+            await _context.SaveChangesAsync();
+            // → tell *me* (the caller) that my message is now “delivered”
+            await Clients.Caller.SendAsync("MessageDelivered", chat.Id);
 
-    // broadcast **encrypted**; each side will later pick its own wrapped-key
-    await Clients.User(receiverId.ToString())
-                 .SendAsync("ReceiveEncryptedMessage", chat);   // or a slim DTO
-    await Clients.Caller
-                 .SendAsync("ReceiveEncryptedMessage", chat);
-}
+            // broadcast **encrypted**; each side will later pick its own wrapped-key
+            await Clients.User(receiverId.ToString())
+                          .SendAsync("ReceiveEncryptedMessage", chat);   // or a slim DTO
+            await Clients.Caller
+                         .SendAsync("ReceiveEncryptedMessage", chat);
+        }
 
 
         // ─── 4) EDIT MESSAGE ──────────────────────────────
@@ -228,11 +232,12 @@ namespace VirtuPathAPI.Hubs
             if (msg == null || msg.SenderId != me.Value)
                 throw new HubException("Not found or not yours.");
 
-            msg.Message  = newMessage;
+            msg.Message = newMessage;
             msg.IsEdited = true;
             await _context.SaveChangesAsync();
 
-            var dto = new {
+            var dto = new
+            {
                 msg.Id,
                 msg.Message,
                 msg.IsEdited
@@ -261,6 +266,7 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageDeletedForSender", messageId);
         }
 
+
         // ─── 6) DELETE FOR EVERYONE ───────────────────────
         public async Task DeleteForEveryone(int messageId)
         {
@@ -271,7 +277,7 @@ namespace VirtuPathAPI.Hubs
             if (msg == null || msg.SenderId != me.Value)
                 throw new HubException("Not found or not yours.");
 
-            msg.IsDeletedForSender   =
+            msg.IsDeletedForSender =
             msg.IsDeletedForReceiver = true;
             await _context.SaveChangesAsync();
 
@@ -289,29 +295,31 @@ namespace VirtuPathAPI.Hubs
 
             var msg = await _context.ChatMessages.FindAsync(messageId);
             if (msg == null ||
-               (msg.SenderId   != me.Value &&
+               (msg.SenderId != me.Value &&
                 msg.ReceiverId != me.Value))
                 throw new HubException("Not allowed.");
 
             var existing = await _context.MessageReactions
                 .FirstOrDefaultAsync(r =>
                      r.MessageId == messageId &&
-                     r.UserId    == me.Value);
+                     r.UserId == me.Value);
 
             if (existing != null) existing.Emoji = emoji;
             else
-                _context.MessageReactions.Add(new MessageReaction {
+                _context.MessageReactions.Add(new MessageReaction
+                {
                     MessageId = messageId,
-                    UserId    = me.Value,
-                    Emoji     = emoji
+                    UserId = me.Value,
+                    Emoji = emoji
                 });
 
             await _context.SaveChangesAsync();
 
-            var reactionDto = new {
+            var reactionDto = new
+            {
                 MessageId = messageId,
-                UserId    = me.Value,
-                Emoji     = emoji
+                UserId = me.Value,
+                Emoji = emoji
             };
 
             await Clients.User(msg.SenderId.ToString())
@@ -345,5 +353,24 @@ namespace VirtuPathAPI.Hubs
             await Clients.User(chat.ReceiverId.ToString())
                          .SendAsync("MessageReactionRemoved", dto);
         }
+        public async Task AcknowledgeRead(int messageId)
+        {
+        var me = GetCurrentUserId();
+        if (me == null) throw new HubException("Not logged in.");
+
+        var msg = await _context.ChatMessages.FindAsync(messageId);
+        if (msg == null || msg.ReceiverId != me.Value)
+            throw new HubException("Not found or not yours.");
+
+        // mark it in the database
+        msg.IsRead  = true;
+        msg.ReadAt  = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // notify the original sender
+        await Clients.User(msg.SenderId.ToString())
+                    .SendAsync("MessageRead", messageId);
+        }
+
     }
 }

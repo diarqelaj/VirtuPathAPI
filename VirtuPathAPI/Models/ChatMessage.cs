@@ -30,6 +30,9 @@
         public User Sender   { get; set; } = null!;
         public User Receiver { get; set; } = null!;
 
+         public bool    IsRead     { get; set; } = false;
+        public DateTime? ReadAt   { get; set; }
+
         public ICollection<MessageReaction> Reactions { get; set; } = new List<MessageReaction>();
     }
 }
