@@ -414,41 +414,52 @@ namespace VirtuPathAPI.Hubs
                                 .SendAsync("MessageRead", m.Id));
             await Task.WhenAll(tasks);
         }
+// ───── 13)  DELIVERED-ACK ───────────────────────────────
+            public async Task AcknowledgeDelivered(int messageId)
+            {
+                var me = GetCurrentUserId()
+                        ?? throw new HubException("Not logged in.");
 
-        // ─── 12) SINGLE READ‐ACK ─────────────────────────
-        public async Task AcknowledgeRead(int messageId)
-        {
-            var me = GetCurrentUserId();
-            if (me == null) throw new HubException("Not logged in.");
+                var msg = await _context.ChatMessages.FindAsync(messageId);
+                if (msg == null || msg.ReceiverId != me)        // only the receiver may ACK
+                    throw new HubException("Not found or not yours.");
 
-            var msg = await _context.ChatMessages.FindAsync(messageId);
-            if (msg == null || msg.ReceiverId != me.Value)
-                throw new HubException("Not found or not yours.");
+                if (!msg.IsDelivered)                           // idempotent
+                {
+                    msg.IsDelivered = true;
+                    msg.DeliveredAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
 
-            msg.IsRead  = true;
-            msg.ReadAt  = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+                /* notify *both* parties so their UIs update */
+                await Clients.User(msg.SenderId.ToString())
+                            .SendAsync("MessageDelivered", new { messageId, msg.DeliveredAt });
+                await Clients.User(msg.ReceiverId.ToString())
+                            .SendAsync("MessageDelivered", new { messageId, msg.DeliveredAt });
+            }
 
-            await Clients.User(msg.SenderId.ToString())
-                         .SendAsync("MessageRead", messageId);
-        }
+            // ───── 14)  READ-ACK ────────────────────────────────────
+            public async Task AcknowledgeRead(int messageId)
+            {
+                var me = GetCurrentUserId()
+                        ?? throw new HubException("Not logged in.");
 
-        // ─── 13) DELIVERED‐ACK ───────────────────────────
-        public async Task AcknowledgeDelivered(int messageId)
-        {
-            var me = GetCurrentUserId();
-            if (me == null) throw new HubException("Not logged in.");
+                var msg = await _context.ChatMessages.FindAsync(messageId);
+                if (msg == null || msg.ReceiverId != me)
+                    throw new HubException("Not found or not yours.");
 
-            var msg = await _context.ChatMessages.FindAsync(messageId);
-            if (msg == null || msg.ReceiverId != me.Value)
-                throw new HubException("Not found or not yours.");
+                if (!msg.IsRead)
+                {
+                    msg.IsRead = true;
+                    msg.ReadAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
 
-            msg.IsDelivered   = true;
-            msg.DeliveredAt   = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+                await Clients.User(msg.SenderId.ToString())
+                            .SendAsync("MessageRead", new { messageId, msg.ReadAt });
+                await Clients.User(msg.ReceiverId.ToString())
+                            .SendAsync("MessageRead", new { messageId, msg.ReadAt });
+            }
 
-            await Clients.User(msg.SenderId.ToString())
-                         .SendAsync("MessageDelivered", messageId);
-        }
     }
 }
