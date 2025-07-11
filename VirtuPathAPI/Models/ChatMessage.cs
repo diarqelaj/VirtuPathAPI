@@ -30,8 +30,17 @@
         public User Sender   { get; set; } = null!;
         public User Receiver { get; set; } = null!;
 
-         public bool    IsRead     { get; set; } = false;
-        public DateTime? ReadAt   { get; set; }
+        /// <summary>Has the _recipient_ ever ack’d “delivered”?</summary>
+        public bool IsDelivered   { get; set; } = false;
+
+        /// <summary>When they first ack’d “delivered”</summary>
+        public DateTime? DeliveredAt { get; set; }
+
+        /// <summary>Has the _recipient_ ever ack’d “read”?</summary>
+        public bool IsRead        { get; set; } = false;
+
+        /// <summary>When they first ack’d “read”</summary>
+        public DateTime? ReadAt     { get; set; }
 
         public ICollection<MessageReaction> Reactions { get; set; } = new List<MessageReaction>();
     }

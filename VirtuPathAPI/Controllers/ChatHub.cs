@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
-using VirtuPathAPI.Controllers; // for IPresenceTracker
+using VirtuPathAPI.Controllers;
+using System.Collections.Concurrent;
 
 namespace VirtuPathAPI.Hubs
 {
@@ -22,31 +23,42 @@ namespace VirtuPathAPI.Hubs
             RSA rsaPrivate      // ← injected via DI
         )
         {
-            _context = context;
-            _presence = presenceTracker;
+            _context    = context;
+            _presence   = presenceTracker;
             _rsaPrivate = rsaPrivate;
         }
+
+        // ─── Typing‐throttle setup ────────────────────────
+        private static readonly TimeSpan TypingThrottle = TimeSpan.FromMilliseconds(500);
+        private const int TypingCachePruneThreshold = 1000;
+        private readonly ConcurrentDictionary<(int from, int to), DateTime> _lastTyping 
+            = new();
 
         private int? GetCurrentUserId() =>
             Context.GetHttpContext()?.Session.GetInt32("UserID");
 
+        // ─── FRIENDSHIP CHECKS (read‐only) ───────────────
         private Task<bool> AreFriendsAsync(int me, int other) =>
-            _context.UserFriends.AnyAsync(f =>
-                ((f.FollowerId == me && f.FollowedId == other) ||
-                 (f.FollowedId == me && f.FollowerId == other)) &&
-                f.IsAccepted);
+            _context.UserFriends
+                    .AsNoTracking()
+                    .AnyAsync(f =>
+                        ((f.FollowerId == me && f.FollowedId == other) ||
+                         (f.FollowedId == me && f.FollowerId == other)) &&
+                        f.IsAccepted);
 
         private Task<bool> IsRequestAcceptedAsync(int a, int b) =>
-            _context.ChatRequests.AnyAsync(r =>
-                ((r.SenderId == a && r.ReceiverId == b) ||
-                 (r.SenderId == b && r.ReceiverId == a)) &&
-                r.IsAccepted);
+            _context.ChatRequests
+                    .AsNoTracking()
+                    .AnyAsync(r =>
+                        ((r.SenderId == a && r.ReceiverId == b) ||
+                         (r.SenderId == b && r.ReceiverId == a)) &&
+                        r.IsAccepted);
 
-        private Task<bool> CanChatAsync(int me, int other) =>
-            AreFriendsAsync(me, other)
-            .ContinueWith(t => t.Result
-                || IsRequestAcceptedAsync(me, other).Result
-            );
+        private async Task<bool> CanChatAsync(int me, int other)
+        {
+            if (await AreFriendsAsync(me, other)) return true;
+            return await IsRequestAcceptedAsync(me, other);
+        }
 
         // ─── 1) SEND CHAT REQUEST ─────────────────────────
         public async Task SendChatRequest(int receiverId, string initialMessage)
@@ -58,14 +70,15 @@ namespace VirtuPathAPI.Hubs
                 throw new HubException("You’re already friends—use SendMessage.");
 
             if (await _context.ChatRequests
+                  .AsNoTracking()
                   .AnyAsync(r => r.SenderId == me.Value && r.ReceiverId == receiverId))
                 throw new HubException("Request already sent.");
 
             var req = new ChatRequest
             {
-                SenderId = me.Value,
+                SenderId   = me.Value,
                 ReceiverId = receiverId,
-                SentAt = DateTime.UtcNow,
+                SentAt     = DateTime.UtcNow,
                 IsAccepted = false
             };
             _context.ChatRequests.Add(req);
@@ -90,7 +103,7 @@ namespace VirtuPathAPI.Hubs
 
             var req = await _context.ChatRequests
                 .FirstOrDefaultAsync(r =>
-                    r.SenderId == senderId &&
+                    r.SenderId   == senderId &&
                     r.ReceiverId == me.Value &&
                     !r.IsAccepted);
 
@@ -99,8 +112,7 @@ namespace VirtuPathAPI.Hubs
             req.IsAccepted = true;
             await _context.SaveChangesAsync();
 
-            var dto = new
-            {
+            var dto = new {
                 req.Id,
                 req.SenderId,
                 req.ReceiverId,
@@ -109,28 +121,45 @@ namespace VirtuPathAPI.Hubs
 
             await Clients.User(senderId.ToString())
                          .SendAsync("ChatRequestAccepted", dto);
-            await Clients.Caller
-                         .SendAsync("ChatRequestAccepted", dto);
+            await Clients.Caller.SendAsync("ChatRequestAccepted", dto);
         }
 
-        // ─── TYPING INDICATOR ────────────────────────────
-        public async Task Typing(int toUserId)
+        // ─── 3) TYPING INDICATOR ──────────────────────────
+        public Task Typing(int toUserId)
         {
-            var me = GetCurrentUserId()?.ToString();
+            var me = GetCurrentUserId();
             if (me == null) throw new HubException("Not logged in.");
-            await Clients.User(toUserId.ToString())
-                         .SendAsync("UserTyping", me);
+
+            // prune stale entries if our cache is too big
+            if (_lastTyping.Count > TypingCachePruneThreshold)
+            {
+                var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes(5);
+                foreach (var kv in _lastTyping.Where(kv => kv.Value < cutoff))
+                    _lastTyping.TryRemove(kv.Key, out _);
+            }
+
+            var key = (from: me.Value, to: toUserId);
+            var now = DateTime.UtcNow;
+
+            // throttle
+            if (_lastTyping.TryGetValue(key, out var last) &&
+                now - last < TypingThrottle)
+                return Task.CompletedTask;
+
+            _lastTyping[key] = now;
+            return Clients.User(toUserId.ToString())
+                          .SendAsync("UserTyping", me.Value);
         }
 
-        public async Task StopTyping(int toUserId)
+        public Task StopTyping(int toUserId)
         {
-            var me = GetCurrentUserId()?.ToString();
+            var me = GetCurrentUserId();
             if (me == null) throw new HubException("Not logged in.");
-            await Clients.User(toUserId.ToString())
-                         .SendAsync("UserStopTyping", me);
+            return Clients.User(toUserId.ToString())
+                          .SendAsync("UserStopTyping", me.Value);
         }
 
-        // ─── PRESENCE ────────────────────────────────────
+        // ─── 4) PRESENCE ──────────────────────────────────
         public override async Task OnConnectedAsync()
         {
             var userId = GetCurrentUserId();
@@ -140,12 +169,13 @@ namespace VirtuPathAPI.Hubs
 
                 var friends = await GetFriendIds(userId.Value);
 
-                // 1) Tell my friends I’m online
-                foreach (var f in friends)
-                    await Clients.User(f.ToString())
-                                 .SendAsync("UserOnline", userId.Value);
+                // 1) Tell my friends I’m online (in parallel)
+                var onlineTasks = friends
+                    .Select(f => Clients.User(f.ToString())
+                                        .SendAsync("UserOnline", userId.Value));
+                await Task.WhenAll(onlineTasks);
 
-                // 2) Tell me **which of them** are already online
+                // 2) Tell me which of them are online
                 var onlineFriends = await _presence.GetOnlineFriendsAsync(userId.Value, friends);
                 await Clients.Caller.SendAsync("OnlineFriends", onlineFriends);
             }
@@ -153,76 +183,93 @@ namespace VirtuPathAPI.Hubs
             await base.OnConnectedAsync();
         }
 
-
         public override async Task OnDisconnectedAsync(Exception? ex)
         {
             var userId = GetCurrentUserId();
             if (userId != null)
             {
-                // unregister
                 await _presence.UserDisconnectedAsync(userId.Value, Context.ConnectionId);
 
-                // notify friends
                 var friends = await GetFriendIds(userId.Value);
-                foreach (var f in friends)
-                    await Clients.User(f.ToString())
-                                 .SendAsync("UserOffline", userId.Value);
+
+                // broadcast offline in parallel
+                var offlineTasks = friends
+                    .Select(f => Clients.User(f.ToString())
+                                        .SendAsync("UserOffline", userId.Value));
+                await Task.WhenAll(offlineTasks);
             }
 
             await base.OnDisconnectedAsync(ex);
         }
 
-        // helper to fetch friend IDs
+        // ─── helper to fetch friend IDs ──────────────────
         private async Task<IEnumerable<int>> GetFriendIds(int me)
         {
             return await _context.UserFriends
+                .AsNoTracking()
                 .Where(f => ((f.FollowerId == me) || (f.FollowedId == me)) && f.IsAccepted)
                 .Select(f => f.FollowerId == me ? f.FollowedId : f.FollowerId)
                 .ToListAsync();
         }
 
-        // ─── 3) SEND MESSAGE (HYBRID DECRYPTION + STORE PLAINTEXT) ─────────────────// ChatHub.cs  ───────────────────────────────────────────────────────────────
+        // ─── 5) SEND MESSAGE (store blob + broadcast) ────
         public async Task SendMessage(
-         int receiverId,
-         string wrappedKeyForSenderB64,
-         string wrappedKeyForReceiverB64,
-         string ivB64,
-         string ciphertextB64,
-         string tagB64,
-         int? replyToMessageId)
+            int    receiverId,
+            string wrappedKeyForSenderB64,
+            string wrappedKeyForReceiverB64,
+            string ivB64,
+            string ciphertextB64,
+            string tagB64,
+            int?   replyToMessageId)
         {
             var me = GetCurrentUserId();
             if (me == null) throw new HubException("Not logged in.");
             if (!await CanChatAsync(me.Value, receiverId))
                 throw new HubException("Not friends or request not accepted.");
 
-            // ✨ NO decryption, just store the blob
             var chat = new ChatMessage
             {
-                SenderId = me.Value,
-                ReceiverId = receiverId,
-                WrappedKeyForSender = wrappedKeyForSenderB64,
-                WrappedKeyForReceiver = wrappedKeyForReceiverB64,
-                Iv = ivB64,
-                Tag = tagB64,
-                Message = ciphertextB64,
-                SentAt = DateTime.UtcNow,
-                ReplyToMessageId = replyToMessageId
+                SenderId             = me.Value,
+                ReceiverId           = receiverId,
+                WrappedKeyForSender  = wrappedKeyForSenderB64,
+                WrappedKeyForReceiver= wrappedKeyForReceiverB64,
+                Iv                   = ivB64,
+                Tag                  = tagB64,
+                Message              = ciphertextB64,
+                SentAt               = DateTime.UtcNow,
+                ReplyToMessageId     = replyToMessageId
             };
+
             _context.ChatMessages.Add(chat);
             await _context.SaveChangesAsync();
-            // → tell *me* (the caller) that my message is now “delivered”
-            await Clients.Caller.SendAsync("MessageDelivered", chat.Id);
 
-            // broadcast **encrypted**; each side will later pick its own wrapped-key
-            await Clients.User(receiverId.ToString())
-                          .SendAsync("ReceiveEncryptedMessage", chat);   // or a slim DTO
-            await Clients.Caller
-                         .SendAsync("ReceiveEncryptedMessage", chat);
+            // slim DTO for the wire
+            var dto = new {
+                Id                 = chat.Id,
+                SenderId           = chat.SenderId,
+                ReceiverId         = chat.ReceiverId,
+                Iv                 = chat.Iv,
+                Tag                = chat.Tag,
+                Message            = chat.Message,
+                SentAt             = chat.SentAt,
+                ReplyToMessageId   = chat.ReplyToMessageId
+            };
+
+            // 1) tell *me* it's delivered
+            _ = Clients.Caller.SendAsync("MessageDelivered", chat.Id);
+
+            // 2) broadcast encrypted
+            var sendTasks = new[]
+            {
+                Clients.User(receiverId.ToString())
+                       .SendAsync("ReceiveEncryptedMessage", dto),
+                Clients.Caller
+                       .SendAsync("ReceiveEncryptedMessage", dto)
+            };
+            await Task.WhenAll(sendTasks);
         }
 
-
-        // ─── 4) EDIT MESSAGE ──────────────────────────────
+        // ─── 6) EDIT MESSAGE ─────────────────────────────
         public async Task EditMessage(int messageId, string newMessage)
         {
             var me = GetCurrentUserId();
@@ -232,16 +279,11 @@ namespace VirtuPathAPI.Hubs
             if (msg == null || msg.SenderId != me.Value)
                 throw new HubException("Not found or not yours.");
 
-            msg.Message = newMessage;
+            msg.Message  = newMessage;
             msg.IsEdited = true;
             await _context.SaveChangesAsync();
 
-            var dto = new
-            {
-                msg.Id,
-                msg.Message,
-                msg.IsEdited
-            };
+            var dto = new { msg.Id, msg.Message, msg.IsEdited };
 
             await Clients.User(msg.SenderId.ToString())
                          .SendAsync("MessageEdited", dto);
@@ -249,7 +291,7 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageEdited", dto);
         }
 
-        // ─── 5) DELETE FOR SENDER ─────────────────────────
+        // ─── 7) DELETE FOR SENDER ────────────────────────
         public async Task DeleteForSender(int messageId)
         {
             var me = GetCurrentUserId();
@@ -266,8 +308,7 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageDeletedForSender", messageId);
         }
 
-
-        // ─── 6) DELETE FOR EVERYONE ───────────────────────
+        // ─── 8) DELETE FOR EVERYONE ──────────────────────
         public async Task DeleteForEveryone(int messageId)
         {
             var me = GetCurrentUserId();
@@ -277,7 +318,7 @@ namespace VirtuPathAPI.Hubs
             if (msg == null || msg.SenderId != me.Value)
                 throw new HubException("Not found or not yours.");
 
-            msg.IsDeletedForSender =
+            msg.IsDeletedForSender   =
             msg.IsDeletedForReceiver = true;
             await _context.SaveChangesAsync();
 
@@ -287,7 +328,7 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageDeletedForEveryone", messageId);
         }
 
-        // ─── 7) REACT TO MESSAGE ─────────────────────────
+        // ─── 9) REACT TO MESSAGE ─────────────────────────
         public async Task ReactToMessage(int messageId, string emoji)
         {
             var me = GetCurrentUserId();
@@ -295,31 +336,28 @@ namespace VirtuPathAPI.Hubs
 
             var msg = await _context.ChatMessages.FindAsync(messageId);
             if (msg == null ||
-               (msg.SenderId != me.Value &&
+               (msg.SenderId   != me.Value &&
                 msg.ReceiverId != me.Value))
                 throw new HubException("Not allowed.");
 
             var existing = await _context.MessageReactions
                 .FirstOrDefaultAsync(r =>
                      r.MessageId == messageId &&
-                     r.UserId == me.Value);
+                     r.UserId    == me.Value);
 
             if (existing != null) existing.Emoji = emoji;
-            else
-                _context.MessageReactions.Add(new MessageReaction
-                {
-                    MessageId = messageId,
-                    UserId = me.Value,
-                    Emoji = emoji
-                });
+            else _context.MessageReactions.Add(new MessageReaction {
+                MessageId = messageId,
+                UserId    = me.Value,
+                Emoji     = emoji
+            });
 
             await _context.SaveChangesAsync();
 
-            var reactionDto = new
-            {
+            var reactionDto = new {
                 MessageId = messageId,
-                UserId = me.Value,
-                Emoji = emoji
+                UserId    = me.Value,
+                Emoji     = emoji
             };
 
             await Clients.User(msg.SenderId.ToString())
@@ -328,7 +366,7 @@ namespace VirtuPathAPI.Hubs
                          .SendAsync("MessageReacted", reactionDto);
         }
 
-        // ─── 8) REMOVE REACTION ──────────────────────────
+        // ─── 10) REMOVE REACTION ─────────────────────────
         public async Task RemoveReaction(int messageId)
         {
             var me = GetCurrentUserId();
@@ -353,24 +391,64 @@ namespace VirtuPathAPI.Hubs
             await Clients.User(chat.ReceiverId.ToString())
                          .SendAsync("MessageReactionRemoved", dto);
         }
-        public async Task AcknowledgeRead(int messageId)
+
+        // ─── 11) BULK READ‐ACK ───────────────────────────
+        public async Task AcknowledgeReadBulk(int[] messageIds)
         {
-        var me = GetCurrentUserId();
-        if (me == null) throw new HubException("Not logged in.");
+            // me is now an int, not int?
+            var me = GetCurrentUserId()
+                    ?? throw new HubException("Not logged in.");
 
-        var msg = await _context.ChatMessages.FindAsync(messageId);
-        if (msg == null || msg.ReceiverId != me.Value)
-            throw new HubException("Not found or not yours.");
+            // use me directly
+            var toAck = await _context.ChatMessages
+                        .Where(m => messageIds.Contains(m.Id) 
+                                    && m.ReceiverId == me)
+                        .ToListAsync();
 
-        // mark it in the database
-        msg.IsRead  = true;
-        msg.ReadAt  = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+            var now = DateTime.UtcNow;
+            toAck.ForEach(m => { m.IsRead = true; m.ReadAt = now; });
+            await _context.SaveChangesAsync();
 
-        // notify the original sender
-        await Clients.User(msg.SenderId.ToString())
-                    .SendAsync("MessageRead", messageId);
+            var tasks = toAck
+                .Select(m => Clients.User(m.SenderId.ToString())
+                                .SendAsync("MessageRead", m.Id));
+            await Task.WhenAll(tasks);
         }
 
+        // ─── 12) SINGLE READ‐ACK ─────────────────────────
+        public async Task AcknowledgeRead(int messageId)
+        {
+            var me = GetCurrentUserId();
+            if (me == null) throw new HubException("Not logged in.");
+
+            var msg = await _context.ChatMessages.FindAsync(messageId);
+            if (msg == null || msg.ReceiverId != me.Value)
+                throw new HubException("Not found or not yours.");
+
+            msg.IsRead  = true;
+            msg.ReadAt  = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            await Clients.User(msg.SenderId.ToString())
+                         .SendAsync("MessageRead", messageId);
+        }
+
+        // ─── 13) DELIVERED‐ACK ───────────────────────────
+        public async Task AcknowledgeDelivered(int messageId)
+        {
+            var me = GetCurrentUserId();
+            if (me == null) throw new HubException("Not logged in.");
+
+            var msg = await _context.ChatMessages.FindAsync(messageId);
+            if (msg == null || msg.ReceiverId != me.Value)
+                throw new HubException("Not found or not yours.");
+
+            msg.IsDelivered   = true;
+            msg.DeliveredAt   = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            await Clients.User(msg.SenderId.ToString())
+                         .SendAsync("MessageDelivered", messageId);
+        }
     }
 }
