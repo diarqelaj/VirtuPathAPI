@@ -414,9 +414,13 @@ namespace VirtuPathAPI.Hubs
                             .ToListAsync();
    if (mine.Count == 0) return;
 
-   var csv = string.Join(",", mine);
-   await ExecAsync("EXEC Chat.MarkReadBulk @IdsCsv",
-                   new SqlParameter("@IdsCsv", csv));
+            var csv = string.Join(",", mine);               // `mine` is the validated list
+
+            await ExecAsync(
+                "EXEC Chat.MarkReadBulk @IdsCsv, @ReceiverId",
+                new SqlParameter("@IdsCsv",     csv),
+                new SqlParameter("@ReceiverId", me)          // 👈 new arg
+            );
             var meta = await _context.ChatMessages
                                     .Where(m => messageIds.Contains(m.Id))                          .Select(m => new { m.Id, m.SenderId, m.ReadAt })
                                     .ToListAsync();
