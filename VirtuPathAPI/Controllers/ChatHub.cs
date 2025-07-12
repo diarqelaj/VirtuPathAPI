@@ -406,9 +406,17 @@ namespace VirtuPathAPI.Hubs
             // use me directly
             if (messageIds == null || messageIds.Length == 0) return;
 
-            var csv = string.Join(",", messageIds.Distinct());
-            await ExecAsync("EXEC Chat.MarkReadBulk @IdsCsv",
-                            new SqlParameter("@IdsCsv", csv));
+             // 1) keep only messages where *I* am the receiver
+   var mine = await _context.ChatMessages
+                            .Where(m => messageIds.Contains(m.Id) &&
+                                        m.ReceiverId == me)
+                            .Select(m => m.Id)
+                            .ToListAsync();
+   if (mine.Count == 0) return;
+
+   var csv = string.Join(",", mine);
+   await ExecAsync("EXEC Chat.MarkReadBulk @IdsCsv",
+                   new SqlParameter("@IdsCsv", csv));
             var meta = await _context.ChatMessages
                                     .Where(m => messageIds.Contains(m.Id))                          .Select(m => new { m.Id, m.SenderId, m.ReadAt })
                                     .ToListAsync();
