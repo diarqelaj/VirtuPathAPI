@@ -14,6 +14,8 @@ namespace VirtuPathAPI.Models
         // ← Add this line:
         public DbSet<PerformanceReview> PerformanceReviews { get; set; }
 
+        public DbSet<CobaltUserKeyVault> CobaltUserKeyVault { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserFriend>()
