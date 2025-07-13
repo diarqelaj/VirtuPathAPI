@@ -219,15 +219,15 @@ namespace VirtuPathAPI.Hubs
         // ─── 5) SEND MESSAGE (store blob + broadcast) ────
         // -----------------------------------------------------------------------------
         public async Task SendMessage(
-             int    receiverId,
-             string dhPubB64,
-             int    pn,
-             int    n,
-             string ivB64,
-             string ciphertextB64,
-             string tagB64,
-             int?   replyToMessageId,
-             string? reactionEmoji = null)  
+            int    receiverId,
+            string dhPubB64,
+            int    pn,
+            int    n,
+            string ivB64,
+            string ciphertextB64,
+            string tagB64,
+            int?   replyToMessageId,
+            string? reactionEmoji = null) 
         {
             var me = GetCurrentUserId();
             if (me == null) throw new HubException("Not logged in.");
@@ -268,24 +268,27 @@ namespace VirtuPathAPI.Hubs
             await _context.SaveChangesAsync(); 
 
             /* full DTO — now includes the two wrapped keys 🚀 */
-            var dto = new
+           var dto = new
             {
-                id         = msg.Id,
-                senderId   = msg.SenderId,
-                receiverId = msg.ReceiverId,
+                id               = msg.Id,
+                senderId         = msg.SenderId,
+                receiverId       = msg.ReceiverId,
 
-                // ratchet header
-                dhPubB64 = msg.DhPubB64,
-                pn       = msg.PN,
-                n        = msg.N,
+                // ratchet header (lower‐case!)
+                dhPubB64         = msg.DhPubB64,  // ← must match data.dhPubB64
+                pn               = msg.PN,        // ← must match data.pn
+                n                = msg.N,         // ← must match data.n
 
-                // ciphertext
-                ivB64         = msg.Iv,
-                ciphertextB64 = msg.Message,
-                tagB64        = msg.Tag,
-                sentAt        = msg.SentAt,
+                // encrypted blob
+                ivB64            = msg.Iv,                // ← must match data.ivB64
+                ciphertextB64    = msg.Message,           // ← must match data.ciphertextB64
+                tagB64           = msg.Tag,               // ← must match data.tagB64
+
+                // metadata
+                sentAt           = msg.SentAt,
                 replyToMessageId = msg.ReplyToMessageId
             };
+
 
             // 1) optimistic “delivered” back to myself
             _ = Clients.Caller.SendAsync("MessageDelivered", msg.Id);

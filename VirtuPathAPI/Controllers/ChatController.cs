@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
+using VirtuPathAPI.Hubs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -9,6 +11,7 @@ namespace VirtuPathAPI.Controllers
     public class ChatController : ControllerBase
     {
         private readonly ChatContext _context;
+        private readonly IHubContext<ChatHub> _hub; 
 
         public ChatController(ChatContext context)
         {
@@ -41,23 +44,33 @@ public async Task<IActionResult> GetMessages(int withUserId)
             (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
             (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver))
         .OrderBy(m => m.SentAt)
-        .Select(m => new {
-    id         = m.Id,
-    senderId   = m.SenderId,
-    receiverId = m.ReceiverId,
+       .Select(m => new {
+    id               = m.Id,
+    senderId         = m.SenderId,
+    receiverId       = m.ReceiverId,
 
     // ratchet header
-    dhPubB64 = m.DhPubB64,
-    pn       = m.PN,
-    n        = m.N,
+    dhPubB64         = m.DhPubB64,
+    pn               = m.PN,
+    n                = m.N,
 
-    // ciphertext
-    ciphertextB64 = m.Message,
-    tagB64        = m.Tag,
+    // ciphertext + IV + tag
+    ivB64            = m.Iv,           // <- add this line
+    ciphertextB64    = m.Message,
+    tagB64           = m.Tag,
 
+    // rest of your metadata
     replyToMessageId = m.ReplyToMessageId,
     sentAt           = m.SentAt,
-    isEdited         = m.IsEdited
+    isEdited         = m.IsEdited,
+    isDeletedForSender   = m.IsDeletedForSender,
+    isDeletedForReceiver = m.IsDeletedForReceiver,
+    isDelivered      = m.IsDelivered,
+    deliveredAt      = m.DeliveredAt,
+    isRead           = m.IsRead,
+    readAt           = m.ReadAt
+
+
 })
         .ToListAsync();
 
@@ -68,49 +81,86 @@ public async Task<IActionResult> GetMessages(int withUserId)
 
 
       [HttpPost("send")]
-        public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
+public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
+{
+    int? me = GetCurrentUserId();
+    if (me is null) return Unauthorized();
+    if (!await AreFriendsAsync(me.Value, req.ReceiverId)) return Forbid();
+
+    // 1) Save the encrypted message
+    var msg = new ChatMessage
+    {
+        SenderId          = me.Value,
+        ReceiverId        = req.ReceiverId,
+
+        // ▸ ratchet header
+        DhPubB64          = req.DhPubB64.Trim(),
+        PN                = req.PN,
+        N                 = req.N,
+
+        // ▸ encrypted blob
+        Iv                = req.IvB64,
+        Message           = req.CiphertextB64,
+        Tag               = req.TagB64,
+
+        SentAt            = DateTimeOffset.UtcNow,
+        ReplyToMessageId  = req.ReplyToMessageId
+    };
+    _context.ChatMessages.Add(msg);
+
+    if (!string.IsNullOrWhiteSpace(req.ReactionEmoji))
+    {
+        _context.MessageReactions.Add(new MessageReaction
         {
-            int? me = GetCurrentUserId();
-            if (me is null) return Unauthorized();
-            if (!await AreFriendsAsync(me.Value, req.ReceiverId)) return Forbid();
+            MessageId = msg.Id,
+            UserId    = me.Value,
+            Emoji     = req.ReactionEmoji
+        });
+    }
 
-            var msg = new ChatMessage
-            {
-                SenderId   = me.Value,
-                ReceiverId = req.ReceiverId,
+    await _context.SaveChangesAsync();
 
-                // ▸ ratchet header
-                DhPubB64 = req.DhPubB64.Trim(),
-                PN       = req.PN,
-                N        = req.N,
+    // 2) Shape the payload exactly as the TS client expects
+    var payload = new
+    {
+        id                  = msg.Id,
+        senderId            = msg.SenderId,
+        receiverId          = msg.ReceiverId,
 
-                // ▸ encrypted blob
-                Iv       = req.IvB64,
-                Message  = req.CiphertextB64,
-                Tag      = req.TagB64,
+        // ratchet header
+        dhPubB64            = msg.DhPubB64,
+        pn                  = msg.PN,
+        n                   = msg.N,
 
-                SentAt           = DateTimeOffset.UtcNow,
-                ReplyToMessageId = req.ReplyToMessageId
-            };
+        // encrypted blob
+        ivB64               = msg.Iv,
+        ciphertextB64       = msg.Message,
+        tagB64              = msg.Tag,
 
-            _context.ChatMessages.Add(msg);
+        // metadata
+        sentAt              = msg.SentAt,
+        replyToMessageId    = msg.ReplyToMessageId,
+        isEdited            = msg.IsEdited,
+        isDeletedForSender  = msg.IsDeletedForSender,
+        isDeletedForReceiver= msg.IsDeletedForReceiver,
+        isDelivered         = msg.IsDelivered,
+        deliveredAt         = msg.DeliveredAt,
+        isRead              = msg.IsRead,
+        readAt              = msg.ReadAt
+    };
 
-            // optional one-tap reaction
-            if (!string.IsNullOrWhiteSpace(req.ReactionEmoji))
-            {
-                _context.MessageReactions.Add(new MessageReaction
-                {
-                    MessageId = msg.Id,   // EF will populate this after SaveChanges
-                    UserId    = me.Value,
-                    Emoji     = req.ReactionEmoji!
-                });
-            }
+    // 3) Broadcast to both sender and receiver over SignalR
+    //    (assumes you set Connection.UserIdentifier = userID.ToString())
+    await _hub.Clients.User(req.ReceiverId.ToString())
+             .SendAsync("ReceiveEncryptedMessage", payload);
 
-            await _context.SaveChangesAsync();   // ⬅️ single commit
+    await _hub.Clients.User(me.Value.ToString())
+             .SendAsync("ReceiveEncryptedMessage", payload);
 
-            // TODO: broadcast over SignalR (include DhPubB64 / PN / N / etc.)
-            return Ok(new { msg.Id });
-        }
+    // 4) Return new message ID
+    return Ok(new { id = msg.Id });
+}
+
 
 
         [HttpPost("delete/{messageId:int}/sender")]
