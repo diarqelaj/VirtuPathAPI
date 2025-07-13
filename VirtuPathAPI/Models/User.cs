@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text.Json.Serialization;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace VirtuPathAPI.Models
 {
@@ -42,12 +43,25 @@ namespace VirtuPathAPI.Models
         [JsonPropertyName("twoFactorCodeExpiresAt")]
         public DateTime? TwoFactorCodeExpiresAt { get; set; }
 
-        // Profile
+        // ─────────────────────────────────────────────────────────────────────
+        // KEEP this public‐key on User, since you want to expose it freely.
+        [JsonConverter(typeof(JsonRawStringConverter))]
+        [JsonPropertyName("publicKeyJwk")]
+        public string? PublicKeyJwk { get; set; }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Profile images
         [JsonPropertyName("profilePictureUrl")]
         public string? ProfilePictureUrl { get; set; }
 
+        [JsonPropertyName("profilePicturePublicId")]
+        public string? ProfilePicturePublicId { get; set; }
+
         [JsonPropertyName("coverImageUrl")]
         public string? CoverImageUrl { get; set; }
+
+        [JsonPropertyName("coverImagePublicId")]
+        public string? CoverImagePublicId { get; set; }
 
         [JsonPropertyName("bio")]
         public string? Bio { get; set; }
@@ -88,5 +102,12 @@ namespace VirtuPathAPI.Models
       
         [JsonPropertyName("careerPath")]
         public CareerPath? CareerPath { get; set; }
+
+
+        // ─────────────────────────────────────────────────────────────────────
+        // NEW: one‐to‐one link to the private‐key vault.
+        //      (It holds only the encrypted private‐PEM; PublicKeyJwk stays here.)
+        //
+      public CobaltUserKeyVault? KeyVault { get; set; }
     }
 }
