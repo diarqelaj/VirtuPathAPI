@@ -29,62 +29,88 @@ namespace VirtuPathAPI.Controllers
                           .Select(u => (int?)u.UserID)
                           .FirstOrDefaultAsync();
 
-        [HttpGet("messages/{withUserId:int}")]
-        public async Task<IActionResult> GetMessages(int withUserId)
-        {
-            var me = GetCurrentUserId();
-            if (me is null) return Unauthorized();
-            if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
-
-            var messages = await _context.ChatMessages
-                .Where(m =>
-                    (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
-                    (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver)
-                )
-                .OrderBy(m => m.SentAt)
-                .Select(m => new {
-                    id         = m.Id,
-                    senderId   = m.SenderId,
-                    receiverId = m.ReceiverId,
-                    wrappedKeyForSenderB64   = m.WrappedKeyForSender,
-                    wrappedKeyForReceiverB64 = m.WrappedKeyForReceiver,
-                    ivB64         = m.Iv,
-                    ciphertextB64 = m.Message,
-                    tagB64        = m.Tag,
-                    replyToMessageId = m.ReplyToMessageId,
-                    sentAt           = m.SentAt,
-                    isEdited         = m.IsEdited
-                })
-                .ToListAsync();
-
-            return Ok(messages);
-        }
-
-
-
-       [HttpPost("send")]
-public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
+       [HttpGet("messages/{withUserId:int}")]
+public async Task<IActionResult> GetMessages(int withUserId)
 {
     int? me = GetCurrentUserId();
     if (me is null) return Unauthorized();
-    if (!await AreFriendsAsync(me.Value, req.ReceiverId)) return Forbid();
+    if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
 
-    var chat = new ChatMessage
-    {
-        SenderId             = me.Value,
-        ReceiverId           = req.ReceiverId,
-        WrappedKeyForSender  = req.WrappedKeyForSenderB64,
-        WrappedKeyForReceiver= req.WrappedKeyForReceiverB64,
-        Iv                   = req.IvB64,
-        Tag                  = req.TagB64,
-        Message              = req.CiphertextB64,
-        SentAt               = DateTime.UtcNow,
-        ReplyToMessageId     = req.ReplyToMessageId
-    };
-    _context.ChatMessages.Add(chat);
-    await _context.SaveChangesAsync();
-    return Ok(new { chat.Id });
+    var rows = await _context.ChatMessages
+        .Where(m =>
+            (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
+            (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver))
+        .OrderBy(m => m.SentAt)
+        .Select(m => new {
+    id         = m.Id,
+    senderId   = m.SenderId,
+    receiverId = m.ReceiverId,
+
+    // ratchet header
+    dhPubB64 = m.DhPubB64,
+    pn       = m.PN,
+    n        = m.N,
+
+    // ciphertext
+    ciphertextB64 = m.Message,
+    tagB64        = m.Tag,
+
+    replyToMessageId = m.ReplyToMessageId,
+    sentAt           = m.SentAt,
+    isEdited         = m.IsEdited
+})
+        .ToListAsync();
+
+    return Ok(rows);
 }
+
+
+
+
+      [HttpPost("send")]
+        public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
+        {
+            int? me = GetCurrentUserId();
+            if (me is null) return Unauthorized();
+            if (!await AreFriendsAsync(me.Value, req.ReceiverId)) return Forbid();
+
+            var msg = new ChatMessage
+            {
+                SenderId   = me.Value,
+                ReceiverId = req.ReceiverId,
+
+                // ▸ ratchet header
+                DhPubB64 = req.DhPubB64.Trim(),
+                PN       = req.PN,
+                N        = req.N,
+
+                // ▸ encrypted blob
+                Iv       = req.IvB64,
+                Message  = req.CiphertextB64,
+                Tag      = req.TagB64,
+
+                SentAt           = DateTimeOffset.UtcNow,
+                ReplyToMessageId = req.ReplyToMessageId
+            };
+
+            _context.ChatMessages.Add(msg);
+
+            // optional one-tap reaction
+            if (!string.IsNullOrWhiteSpace(req.ReactionEmoji))
+            {
+                _context.MessageReactions.Add(new MessageReaction
+                {
+                    MessageId = msg.Id,   // EF will populate this after SaveChanges
+                    UserId    = me.Value,
+                    Emoji     = req.ReactionEmoji!
+                });
+            }
+
+            await _context.SaveChangesAsync();   // ⬅️ single commit
+
+            // TODO: broadcast over SignalR (include DhPubB64 / PN / N / etc.)
+            return Ok(new { msg.Id });
+        }
 
 
         [HttpPost("delete/{messageId:int}/sender")]
@@ -225,61 +251,60 @@ public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
             return await GetMessages(friendId.Value);
         }
 
-       [HttpPost("send/by-username")]
+      [HttpPost("send/by-username")]
 public async Task<IActionResult> SendMessageByUsername(
-    [FromBody] SendMessageByUsernameRequest req)
+        [FromBody] SendMessageByUsernameRequest req)
 {
     int? friendId = await UsernameToIdAsync(req.ReceiverUsername);
     if (friendId is null) return NotFound("User not found.");
 
-    var idRequest = new SendMessageRequest
+    var idReq = new SendMessageRequest
     {
-        ReceiverId            = friendId.Value,
-
-        // pass the encrypted blob straight through
-        WrappedKeyForSenderB64   = req.WrappedKeyForSenderB64,
-        WrappedKeyForReceiverB64 = req.WrappedKeyForReceiverB64,
-        IvB64                    = req.IvB64,
-        CiphertextB64            = req.CiphertextB64,
-        TagB64                   = req.TagB64,
-
-        // optional extras
-        ReplyToMessageId      = req.ReplyToMessageId,
-        ReactionEmoji         = req.ReactionEmoji
+        ReceiverId        = friendId.Value,
+        DhPubB64          = req.DhPubB64,
+        PN                = req.PN,
+        N                 = req.N,
+        IvB64             = req.IvB64,
+        CiphertextB64     = req.CiphertextB64,
+        TagB64            = req.TagB64,
+        ReplyToMessageId  = req.ReplyToMessageId
     };
-
-    return await SendMessage(idRequest);
+    return await SendMessage(idReq);
 }
-      public class SendMessageRequest
+ public sealed class SendMessageRequest
 {
-    public int    ReceiverId               { get; set; }
+    public int    ReceiverId  { get; set; }
 
-    // ── encrypted payload ───────────────
-    public string WrappedKeyForSenderB64   { get; set; } = "";
-    public string WrappedKeyForReceiverB64 { get; set; } = "";
-    public string IvB64                    { get; set; } = "";
-    public string CiphertextB64            { get; set; } = "";
-    public string TagB64                   { get; set; } = "";
+    // ratchet header
+    public string DhPubB64    { get; set; } = "";
+    public int    PN          { get; set; }
+    public int    N           { get; set; }
 
-    // ── extras (optional) ───────────────
-    public int?   ReplyToMessageId         { get; set; }
-    public string? ReactionEmoji           { get; set; }   // 👍 keep
+    // cipher-blob
+    public string IvB64        { get; set; } = "";
+    public string CiphertextB64{ get; set; } = "";
+    public string TagB64       { get; set; } = "";
+
+    public int?   ReplyToMessageId { get; set; }
+
+    // 👇 stays optional
+    public string? ReactionEmoji   { get; set; }
 }
 
-        public class SendMessageByUsernameRequest
+   public sealed class SendMessageByUsernameRequest
 {
-    public string ReceiverUsername          { get; set; } = string.Empty;
+    public string ReceiverUsername { get; set; } = "";
 
-    // ── encrypted payload ────────────────────────────
-    public string WrappedKeyForSenderB64    { get; set; } = "";
-    public string WrappedKeyForReceiverB64  { get; set; } = "";
-    public string IvB64                     { get; set; } = "";
-    public string CiphertextB64             { get; set; } = "";
-    public string TagB64                    { get; set; } = "";
+    // header + blob
+    public string DhPubB64     { get; set; } = "";
+    public int    PN           { get; set; }
+    public int    N            { get; set; }
 
-    // ── extras (optional) ────────────────────────────
-    public int?   ReplyToMessageId          { get; set; }
-    public string? ReactionEmoji            { get; set; }
+    public string IvB64        { get; set; } = "";
+    public string CiphertextB64{ get; set; } = "";
+    public string TagB64       { get; set; } = "";
+
+    public int?   ReplyToMessageId { get; set; }
 }
     }
 }

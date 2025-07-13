@@ -219,58 +219,92 @@ namespace VirtuPathAPI.Hubs
         // ─── 5) SEND MESSAGE (store blob + broadcast) ────
         // -----------------------------------------------------------------------------
         public async Task SendMessage(
-            int    receiverId,
-            string wrappedKeyForSenderB64,
-            string wrappedKeyForReceiverB64,
-            string ivB64,
-            string ciphertextB64,
-            string tagB64,
-            int?   replyToMessageId)
+             int    receiverId,
+             string dhPubB64,
+             int    pn,
+             int    n,
+             string ivB64,
+             string ciphertextB64,
+             string tagB64,
+             int?   replyToMessageId,
+             string? reactionEmoji = null)  
         {
             var me = GetCurrentUserId();
             if (me == null) throw new HubException("Not logged in.");
             if (!await CanChatAsync(me.Value, receiverId))
                 throw new HubException("Not friends or request not accepted.");
 
-            var chat = new ChatMessage
+            var msg = new ChatMessage
             {
-                SenderId              = me.Value,
-                ReceiverId            = receiverId,
-                WrappedKeyForSender   = wrappedKeyForSenderB64,
-                WrappedKeyForReceiver = wrappedKeyForReceiverB64,
-                Iv                    = ivB64,
-                Tag                   = tagB64,
-                Message               = ciphertextB64,
-                SentAt                = DateTime.UtcNow,
-                ReplyToMessageId      = replyToMessageId
+                SenderId   = me.Value,
+                ReceiverId = receiverId,
+
+                // ratchet header
+                DhPubB64 = dhPubB64.Trim(),
+                PN       = pn,
+                N        = n,
+
+                // encrypted blob
+                Iv      = ivB64,
+                Message = ciphertextB64,
+                Tag     = tagB64,
+
+                SentAt           = DateTimeOffset.UtcNow,
+                ReplyToMessageId = replyToMessageId
             };
 
-            _context.ChatMessages.Add(chat);
-            await _context.SaveChangesAsync();
+            _context.ChatMessages.Add(msg);
+
+            if (!string.IsNullOrWhiteSpace(reactionEmoji))
+            {
+                _context.MessageReactions.Add(new MessageReaction
+                {
+                    MessageId = msg.Id,    // EF fills after SaveChanges
+                    UserId    = me.Value,
+                    Emoji     = reactionEmoji!
+                });
+            }
+
+            await _context.SaveChangesAsync(); 
 
             /* full DTO — now includes the two wrapped keys 🚀 */
             var dto = new
             {
-                id                   = chat.Id,
-                senderId             = chat.SenderId,
-                receiverId           = chat.ReceiverId,
-                wrappedKeyForSenderB64   = chat.WrappedKeyForSender,
-                wrappedKeyForReceiverB64 = chat.WrappedKeyForReceiver,
-                ivB64                = chat.Iv,
-                ciphertextB64        = chat.Message,
-                tagB64               = chat.Tag,
-                sentAt               = chat.SentAt,
-                replyToMessageId     = chat.ReplyToMessageId
+                id         = msg.Id,
+                senderId   = msg.SenderId,
+                receiverId = msg.ReceiverId,
+
+                // ratchet header
+                dhPubB64 = msg.DhPubB64,
+                pn       = msg.PN,
+                n        = msg.N,
+
+                // ciphertext
+                ivB64         = msg.Iv,
+                ciphertextB64 = msg.Message,
+                tagB64        = msg.Tag,
+                sentAt        = msg.SentAt,
+                replyToMessageId = msg.ReplyToMessageId
             };
 
-            // 1) tell *me* it’s delivered
-            _ = Clients.Caller.SendAsync("MessageDelivered", chat.Id);
+            // 1) optimistic “delivered” back to myself
+            _ = Clients.Caller.SendAsync("MessageDelivered", msg.Id);
 
-            // 2) broadcast encrypted copy to both parties
+            // 2) encrypted payload to both sides
             await Task.WhenAll(
                 Clients.User(receiverId.ToString()).SendAsync("ReceiveEncryptedMessage", dto),
                 Clients.Caller.SendAsync("ReceiveEncryptedMessage", dto)
             );
+
+            // 3) if there was an inline reaction → push that too
+            if (!string.IsNullOrWhiteSpace(reactionEmoji))
+            {
+                var reactDto = new { messageId = msg.Id, userId = me.Value, emoji = reactionEmoji };
+                await Task.WhenAll(
+                    Clients.User(receiverId.ToString()).SendAsync("MessageReacted", reactDto),
+                    Clients.Caller.SendAsync("MessageReacted", reactDto)
+                );
+            }
         }
 
         // ─── 6) EDIT MESSAGE ─────────────────────────────
