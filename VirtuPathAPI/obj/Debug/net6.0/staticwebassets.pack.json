@@ -1,12 +1,24 @@
 {
   "Files": [
     {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
+      "PackagePath": "staticwebassets/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
+    },
+    {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
+      "PackagePath": "staticwebassets/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
+    },
+    {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
       "PackagePath": "staticwebassets/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg"
     },
     {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
       "PackagePath": "staticwebassets/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
+    },
+    {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
+      "PackagePath": "staticwebassets/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp"
     },
     {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",

@@ -1,5 +1,41 @@
 ﻿<Project>
   <ItemGroup>
+    <StaticWebAsset Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\post-images\65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp'))">
+      <SourceType>Package</SourceType>
+      <SourceId>VirtuPathAPI</SourceId>
+      <ContentRoot>$(MSBuildThisFileDirectory)..\staticwebassets\</ContentRoot>
+      <BasePath>_content/VirtuPathAPI</BasePath>
+      <RelativePath>post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp</RelativePath>
+      <AssetKind>All</AssetKind>
+      <AssetMode>All</AssetMode>
+      <AssetRole>Primary</AssetRole>
+      <RelatedAsset></RelatedAsset>
+      <AssetTraitName></AssetTraitName>
+      <AssetTraitValue></AssetTraitValue>
+      <Fingerprint>kokr12nl52</Fingerprint>
+      <Integrity>jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=</Integrity>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <OriginalItemSpec>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\post-images\65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp'))</OriginalItemSpec>
+    </StaticWebAsset>
+    <StaticWebAsset Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\post-images\b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png'))">
+      <SourceType>Package</SourceType>
+      <SourceId>VirtuPathAPI</SourceId>
+      <ContentRoot>$(MSBuildThisFileDirectory)..\staticwebassets\</ContentRoot>
+      <BasePath>_content/VirtuPathAPI</BasePath>
+      <RelativePath>post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png</RelativePath>
+      <AssetKind>All</AssetKind>
+      <AssetMode>All</AssetMode>
+      <AssetRole>Primary</AssetRole>
+      <RelatedAsset></RelatedAsset>
+      <AssetTraitName></AssetTraitName>
+      <AssetTraitValue></AssetTraitValue>
+      <Fingerprint>y3xzs9tzt7</Fingerprint>
+      <Integrity>on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=</Integrity>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <OriginalItemSpec>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\post-images\b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png'))</OriginalItemSpec>
+    </StaticWebAsset>
     <StaticWebAsset Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\profile-pictures\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg'))">
       <SourceType>Package</SourceType>
       <SourceId>VirtuPathAPI</SourceId>
@@ -35,6 +71,24 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <OriginalItemSpec>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\profile-pictures\55d067d0-9101-4c21-bfc1-26fdeba58251.jpg'))</OriginalItemSpec>
+    </StaticWebAsset>
+    <StaticWebAsset Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\profile-pictures\650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp'))">
+      <SourceType>Package</SourceType>
+      <SourceId>VirtuPathAPI</SourceId>
+      <ContentRoot>$(MSBuildThisFileDirectory)..\staticwebassets\</ContentRoot>
+      <BasePath>_content/VirtuPathAPI</BasePath>
+      <RelativePath>profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp</RelativePath>
+      <AssetKind>All</AssetKind>
+      <AssetMode>All</AssetMode>
+      <AssetRole>Primary</AssetRole>
+      <RelatedAsset></RelatedAsset>
+      <AssetTraitName></AssetTraitName>
+      <AssetTraitValue></AssetTraitValue>
+      <Fingerprint>1llua277dm</Fingerprint>
+      <Integrity>xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=</Integrity>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <OriginalItemSpec>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\profile-pictures\650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp'))</OriginalItemSpec>
     </StaticWebAsset>
     <StaticWebAsset Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\profile-pictures\b1768b1b-06c4-4103-bd50-52ecfe728733.jpg'))">
       <SourceType>Package</SourceType>

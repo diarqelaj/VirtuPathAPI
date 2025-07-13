@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "qg8Qwv00LtKf/1pVU1rMR1PQCbWIRISFTuB2gLpPTeU=",
+  "Hash": "9zZwWaxTXaEldDQ1+5UghjKIux2AQoxetjDyAVT0Xs8=",
   "Source": "VirtuPathAPI",
   "BasePath": "_content/VirtuPathAPI",
   "Mode": "Default",
@@ -16,6 +16,48 @@
     }
   ],
   "Assets": [
+    {
+      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
+      "SourceId": "VirtuPathAPI",
+      "SourceType": "Discovered",
+      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "BasePath": "_content/VirtuPathAPI",
+      "RelativePath": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0#[.{fingerprint}]?.webp",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "Fingerprint": "kokr12nl52",
+      "Integrity": "jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
+    },
+    {
+      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
+      "SourceId": "VirtuPathAPI",
+      "SourceType": "Discovered",
+      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "BasePath": "_content/VirtuPathAPI",
+      "RelativePath": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c#[.{fingerprint}]?.png",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "Fingerprint": "y3xzs9tzt7",
+      "Integrity": "on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
+    },
     {
       "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
       "SourceId": "VirtuPathAPI",
@@ -57,6 +99,27 @@
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
       "OriginalItemSpec": "wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
+    },
+    {
+      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
+      "SourceId": "VirtuPathAPI",
+      "SourceType": "Discovered",
+      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "BasePath": "_content/VirtuPathAPI",
+      "RelativePath": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d#[.{fingerprint}]?.webp",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "AssetMergeBehavior": "",
+      "AssetMergeSource": "",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "Fingerprint": "1llua277dm",
+      "Integrity": "xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp"
     },
     {
       "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
@@ -123,6 +186,170 @@
     }
   ],
   "Endpoints": [
+    {
+      "Route": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.kokr12nl52.webp",
+      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "305244"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "image/webp"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "kokr12nl52"
+        },
+        {
+          "Name": "label",
+          "Value": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8="
+        }
+      ]
+    },
+    {
+      "Route": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
+      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "305244"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "image/webp"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=3600, must-revalidate"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8="
+        }
+      ]
+    },
+    {
+      "Route": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
+      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "156622"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "image/png"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=3600, must-revalidate"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ="
+        }
+      ]
+    },
+    {
+      "Route": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.y3xzs9tzt7.png",
+      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "156622"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "image/png"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "y3xzs9tzt7"
+        },
+        {
+          "Name": "label",
+          "Value": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ="
+        }
+      ]
+    },
     {
       "Route": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.hae0r1f5ys.jpg",
       "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
@@ -284,6 +511,88 @@
         {
           "Name": "integrity",
           "Value": "sha256-dGMPNpQn3jHIOmEoo2frYGATbmhfOgS1+nCvScCHiEo="
+        }
+      ]
+    },
+    {
+      "Route": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.1llua277dm.webp",
+      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "219464"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "image/webp"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "1llua277dm"
+        },
+        {
+          "Name": "label",
+          "Value": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU="
+        }
+      ]
+    },
+    {
+      "Route": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
+      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "219464"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "image/webp"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=3600, must-revalidate"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU="
         }
       ]
     },

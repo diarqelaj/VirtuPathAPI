@@ -12,6 +12,7 @@ using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using dotenv.net;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 
 // ← NEW IMPORTS:
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -37,6 +38,10 @@ builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs)
 builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
+// Add CommunityPostContext (new)
+builder.Services.AddDbContext<CommunityPostContext>(opt =>
+    opt.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
+
 
 // Your ChatContext
 builder.Services.AddDbContext<ChatContext>(options =>
@@ -189,6 +194,10 @@ builder.Services.AddSwaggerGen();
 // 8) BUILD
 //------------------------------------------------------------
 var app = builder.Build();
+app.UseForwardedHeaders(new ForwardedHeadersOptions {
+  ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 
 //------------------------------------------------------------
 // 9) PIPELINE
