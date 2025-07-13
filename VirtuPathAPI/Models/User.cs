@@ -82,8 +82,10 @@ namespace VirtuPathAPI.Models
 
         [JsonPropertyName("lastKnownIP")]
         public string? LastKnownIP { get; set; }
-
-        // Navigation
+        
+        [JsonPropertyName("lastActiveAt")]
+        public DateTime? LastActiveAt { get; set; }
+      
         [JsonPropertyName("careerPath")]
         public CareerPath? CareerPath { get; set; }
     }

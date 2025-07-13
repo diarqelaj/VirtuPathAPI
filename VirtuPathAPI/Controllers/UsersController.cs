@@ -6,8 +6,7 @@ using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Webp;
-
-
+using System.Text.Json.Serialization;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -16,11 +15,43 @@ namespace VirtuPathAPI.Controllers
     public class UsersController : ControllerBase
     {
         private readonly UserContext _context;
+        private static readonly HashSet<string> BannedIPs = new();
 
         public UsersController(UserContext context)
         {
             _context = context;
         }
+
+        // Ban an IP address
+        [HttpPost("ban-ip")]
+        public IActionResult BanIP([FromBody] BanIpRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Ip))
+                return BadRequest(new { error = "IP address is required." });
+
+            BannedIPs.Add(request.Ip.Trim());
+            Console.WriteLine($"🚫 IP banned: {request.Ip}");
+            return Ok(new { message = $"IP {request.Ip} has been banned." });
+        }
+
+        // Unban an IP address
+        [HttpPost("unban-ip")]
+        public IActionResult UnbanIP([FromBody] BanIpRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Ip))
+                return BadRequest(new { error = "IP address is required." });
+
+            bool removed = BannedIPs.Remove(request.Ip.Trim());
+            if (removed)
+            {
+                Console.WriteLine($"✅ IP unbanned: {request.Ip}");
+                return Ok(new { message = $"IP {request.Ip} has been unbanned." });
+            }
+
+            return NotFound(new { error = $"IP {request.Ip} was not found in the ban list." });
+        }
+
+        private bool IsIpBanned(string ip) => BannedIPs.Contains(ip);
 
         // ✅ GET all users (admin/debug only)
         [HttpGet]
@@ -28,50 +59,62 @@ namespace VirtuPathAPI.Controllers
         {
             return await _context.Users.ToListAsync();
         }
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
+            // ── Determine the IP we should check ─────────────────────────
+            var ipToCheck = !string.IsNullOrEmpty(req.ClientPublicIp)
+                            ? req.ClientPublicIp
+                            : HttpContext.Connection.RemoteIpAddress?.ToString();
+            if (ipToCheck == "::1") ipToCheck = "127.0.0.1";
+
+            // ── ENFORCE BAN ──────────────────────────────────────────────
+            if (BannedIPs.Contains(ipToCheck))
+            {
+                // 403 Forbidden
+                return Forbid($"Access denied from IP {ipToCheck}");
+            }
+            // ───────────────────────────────────────────────────────────────
+
             if (string.IsNullOrWhiteSpace(req.Identifier))
                 return BadRequest(new { error = "Email or username is required." });
 
             var identifier = req.Identifier.Trim().ToLower();
-
             var user = await _context.Users.FirstOrDefaultAsync(u =>
                 u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
 
-            if (user == null) return Unauthorized(new { error = "User not found." });
+            if (user == null)
+                return Unauthorized(new { error = "User not found." });
 
+            // Password check...
             if (!string.IsNullOrWhiteSpace(req.Password))
             {
                 if (string.IsNullOrEmpty(user.PasswordHash))
-                {
                     return Unauthorized(new { error = "This account uses Google authentication." });
-                }
-
                 if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                {
                     return Unauthorized(new { error = "Invalid password." });
-                }
             }
             else
             {
                 if (!string.IsNullOrEmpty(user.PasswordHash))
-                {
                     return Unauthorized(new { error = "Password required for this account." });
-                }
             }
 
-            // ✅ If 2FA is enabled
-            if (user.IsTwoFactorEnabled)
-            {
-                return Ok(new { requires2FA = true });
-            }
-
-            // ✅ Login successful
-            HttpContext.Session.SetInt32("UserID", user.UserID);
-            user.LastKnownIP = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
+            // ── Persist the IP immediately ────────────────────────────────
+            user.LastKnownIP = ipToCheck;
+            // ── Update “last active” timestamp ───────────────────────────
+            user.LastActiveAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
+            // ───────────────────────────────────────────────────────────────
+
+            // 2FA?
+            if (user.IsTwoFactorEnabled)
+                return Ok(new { requires2FA = true });
+
+            // Finalize login
+            HttpContext.Session.SetInt32("UserID", user.UserID);
             if (req.RememberMe)
             {
                 Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
@@ -92,10 +135,6 @@ namespace VirtuPathAPI.Controllers
             });
         }
 
-
-
-
-
         // ✅ GET user by ID
         [HttpGet("{id}")]
         public async Task<ActionResult<User>> GetUser(int id)
@@ -104,6 +143,7 @@ namespace VirtuPathAPI.Controllers
             if (user == null) return NotFound();
             return user;
         }
+
         private static readonly HashSet<string> ReservedUsernames = new HashSet<string>
         {
             "admin", "root", "system", "api", "login", "logout", "signup", "me", "settings",
@@ -111,7 +151,6 @@ namespace VirtuPathAPI.Controllers
             "about", "pricing", "reset", "user", "users", "security", "public", "private",
             "team", "teams", "help", "faq"
         };
-        
 
         [HttpPost]
         public async Task<ActionResult<User>> CreateUser(User user)
@@ -165,9 +204,6 @@ namespace VirtuPathAPI.Controllers
             return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
         }
 
-
-
-
         [HttpGet("by-username/{username}")]
         public async Task<IActionResult> GetUserByUsername(string username)
         {
@@ -191,7 +227,8 @@ namespace VirtuPathAPI.Controllers
                     u.RegistrationDate,
                     u.IsVerified,
                     u.VerifiedDate,
-                    u.IsOfficial 
+                    u.IsOfficial,
+                    u.LastActiveAt  // Include LastActiveAt in that projection if needed
                 })
                 .FirstOrDefaultAsync();
 
@@ -199,8 +236,7 @@ namespace VirtuPathAPI.Controllers
                 return NotFound(new { error = "User not found" });
 
             return Ok(user);
-}
-
+        }
 
         [HttpGet("search")]
         public async Task<IActionResult> SearchUsersByName([FromQuery] string name)
@@ -214,20 +250,17 @@ namespace VirtuPathAPI.Controllers
                 {
                     u.UserID,
                     u.FullName,
-                    u.Username, // ✅ ADD THIS
+                    u.Username,
                     u.ProfilePictureUrl,
                     u.IsVerified,
                     u.VerifiedDate,
-                    u.IsOfficial
+                    u.IsOfficial,
+                    u.LastActiveAt  // Include LastActiveAt in search results if desired
                 })
                 .ToListAsync();
 
             return Ok(matches);
         }
-
-
-
-    
 
         // ✅ PUT /api/users/{id} — Update existing user
         [HttpPut("{id}")]
@@ -240,6 +273,7 @@ namespace VirtuPathAPI.Controllers
 
             return NoContent();
         }
+
         [HttpPost("upload-profile-picture")]
         public async Task<IActionResult> UploadProfilePicture([FromForm] IFormFile file, [FromForm] int userId)
         {
@@ -317,7 +351,6 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "Profile picture deleted." });
         }
-
 
         [HttpPost("upload-cover")]
         public async Task<IActionResult> UploadCoverImage([FromForm] IFormFile file, [FromForm] int userId)
@@ -397,7 +430,8 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "Cover image deleted." });
         }
-       [HttpPost("bio")]
+
+        [HttpPost("bio")]
         public async Task<IActionResult> AddBio([FromBody] TextUpdateRequest req)
         {
             var user = await _context.Users.FindAsync(req.UserId);
@@ -432,6 +466,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "Bio deleted." });
         }
+
         [HttpPost("about")]
         public async Task<IActionResult> AddAbout([FromBody] TextUpdateRequest req)
         {
@@ -443,6 +478,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "About added." });
         }
+
         [HttpPut("about")]
         public async Task<IActionResult> UpdateAbout([FromBody] TextUpdateRequest req)
         {
@@ -454,6 +490,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "About updated." });
         }
+
         [HttpDelete("about")]
         public async Task<IActionResult> DeleteAbout([FromQuery] int userId)
         {
@@ -465,6 +502,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "About deleted." });
         }
+
         [HttpPut("privacy")]
         public async Task<IActionResult> ToggleProfilePrivacy([FromBody] PrivacyToggleRequest req)
         {
@@ -476,22 +514,6 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = $"Profile privacy {(req.IsPrivate ? "enabled" : "disabled")}.", isPrivate = user.IsProfilePrivate });
         }
-
-        public class PrivacyToggleRequest
-        {
-            public int UserId { get; set; }
-            public bool IsPrivate { get; set; }
-        }
-
-
-
-
-
-
-
-
-        
-
 
         [HttpGet("notifications/{id}")]
         public async Task<IActionResult> GetNotificationSettings(int id)
@@ -507,6 +529,7 @@ namespace VirtuPathAPI.Controllers
                 user.Promotions
             });
         }
+
         [HttpPut("notifications/{id}")]
         public async Task<IActionResult> UpdateNotificationSettings(int id, [FromBody] NotificationSettingsDto settings)
         {
@@ -522,15 +545,6 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = "Notification settings updated." });
         }
-
-        public class NotificationSettingsDto
-        {
-            public bool ProductUpdates { get; set; }
-            public bool CareerTips { get; set; }
-            public bool NewCareerPathAlerts { get; set; }
-            public bool Promotions { get; set; }
-        }
-
 
         [HttpPost("set-career")]
         public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest request)
@@ -549,26 +563,43 @@ namespace VirtuPathAPI.Controllers
                 if (ip == "::1") ip = "127.0.0.1";
                 user.LastKnownIP = ip;
 
+                        // Update “last active” timestamp on setting career path
+                user.LastActiveAt = DateTime.UtcNow;
+
                 await _context.SaveChangesAsync();
             }
 
             return Ok("Career path set.");
-            Console.WriteLine("Set-career called");
         }
 
-
-
-        // ✅ DELETE user
+        // ✅ DELETE user (with cleanup of subscriptions)
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id)
         {
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound();
 
+            // 1) Remove all subscriptions for this user
+            var subs = _context.UserSubscriptions.Where(s => s.UserID == id);
+            _context.UserSubscriptions.RemoveRange(subs);
+
+            // 2) Remove all friendship records where this user is either follower or followed
+            var friendships = _context.UserFriends
+                                      .Where(f => f.FollowerId == id || f.FollowedId == id);
+            _context.UserFriends.RemoveRange(friendships);
+
+            // 3) Remove all performance‐review records for this user
+            var reviews = _context.PerformanceReviews.Where(r => r.UserID == id);
+            _context.PerformanceReviews.RemoveRange(reviews);
+
+            // 4) Now that no FK rows remain, it’s safe to delete the user itself
             _context.Users.Remove(user);
+
             await _context.SaveChangesAsync();
             return NoContent();
         }
+
+
         [HttpPatch("2fa")]
         public async Task<IActionResult> SetTwoFactorCode([FromBody] TwoFactorRequest req)
         {
@@ -609,6 +640,9 @@ namespace VirtuPathAPI.Controllers
             if (ip == "::1") ip = "127.0.0.1";
             user.LastKnownIP = ip;
 
+                      // Update “last active” timestamp on successful 2FA
+            user.LastActiveAt = DateTime.UtcNow;
+
             user.TwoFactorCode = null;
             user.TwoFactorCodeExpiresAt = null;
 
@@ -637,25 +671,19 @@ namespace VirtuPathAPI.Controllers
             public string? Text { get; set; }
         }
 
-
-        
-
-
         public class TwoFactorRequest
         {
-             public string Identifier { get; set; } 
+            public string Identifier { get; set; }
             public string Code { get; set; }
             public DateTime ExpiresAt { get; set; } // ✅ used only when saving
         }
+
         public class VerifyTwoFactorRequest
         {
-            public string Identifier { get; set; } 
+            public string Identifier { get; set; }
             public string Code { get; set; }
             public bool RememberMe { get; set; }
         }
-
-     
-
 
         [HttpPost("logout")]
         public IActionResult Logout()
@@ -666,7 +694,7 @@ namespace VirtuPathAPI.Controllers
                 Expires = DateTimeOffset.UtcNow.AddDays(-1),
                 HttpOnly = true,
                 Secure = true,
-                SameSite = SameSiteMode.None 
+                SameSite = SameSiteMode.None
             });
 
             return Ok();
@@ -684,6 +712,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(user);
         }
+
         [HttpPost("verify/{userId}")]
         public async Task<IActionResult> VerifyUser(int userId)
         {
@@ -696,6 +725,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok("User marked as verified.");
         }
+
         [HttpPost("unverify/{userId}")]
         public async Task<IActionResult> UnverifyUser(int userId)
         {
@@ -708,6 +738,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok("User unverified.");
         }
+
         [HttpPost("official/{userId}")]
         public async Task<IActionResult> MakeOfficial(int userId)
         {
@@ -739,10 +770,68 @@ namespace VirtuPathAPI.Controllers
 
             return Ok("Official badge removed.");
         }
+        // In VirtuPathAPI/Controllers/UsersController.cs
 
+        [HttpGet("stats")]
+        public async Task<IActionResult> GetAllUserStats()
+        {
+            // 1) Load ALL users (no filtering, no pagination)
+            var allUsers = await _context.Users.ToListAsync();
 
+            // 2) Load ALL accepted friendships into memory
+            var allFriends = await _context.UserFriends
+                .Where(f => f.IsAccepted)
+                .ToListAsync();
 
+            // 3) Load ALL performance reviews into memory
+            var allReviews = await _context.PerformanceReviews.ToListAsync();
 
+            // 4) Build a stats projection for each user, ensuring nobody is skipped
+            var result = allUsers
+                .Select(u =>
+                {
+                    // Count how many accepted followers this user has:
+                    int followersCount = allFriends.Count(f => f.FollowedId == u.UserID);
+
+                    // Count how many users *this* user is following (accepted):
+                    int followingCount = allFriends.Count(f => f.FollowerId == u.UserID);
+
+                    // Find the most recent PerformanceReview for this user (by Year/Month/ReviewID)
+                    var latestReview = allReviews
+                        .Where(r => r.UserID == u.UserID)
+                        .OrderByDescending(r => r.Year)
+                        .ThenByDescending(r => r.Month)
+                        .ThenByDescending(r => r.ReviewID)
+                        .FirstOrDefault();
+
+                    int latestScore = latestReview?.PerformanceScore ?? 0;
+
+                    return new
+                    {
+                        u.UserID,
+                        u.FullName,
+                        u.Username,
+                        FollowersCount = followersCount,
+                        FollowingCount = followingCount,
+                        CurrentDay = u.CurrentDay,
+                        LatestPerformanceScore = latestScore
+                    };
+                })
+                .ToList(); // materialize the projection
+
+            // 5) Return all user‐stats in one JSON array
+            return Ok(result);
+        }
+        [HttpGet("debug-all-users")]
+        public async Task<IActionResult> DebugAllUsers()
+        {
+            var all = await _context.Users.ToListAsync();
+            return Ok(new
+            {
+                TotalFromUsersDb = all.Count,
+                Users = all.Select(u => new { u.UserID, u.Username }).ToList()
+            });
+        }
 
 
         [HttpPost("change-password")]
@@ -775,23 +864,70 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { success = true });
         }
+        [HttpPut("admin/{id}")]
+        public async Task<IActionResult> AdminUpdateUser(int id, [FromBody] UpdateUserDto dto)
+        {
+            var user = await _context.Users.FindAsync(id);
+            if (user == null) return NotFound();
 
+            // Overwrite only the fields admins can change:
+            user.FullName = dto.FullName;
+            user.Username = dto.Username.Trim().ToLower();
+            user.Email = dto.Email.Trim().ToLower();
+            user.IsOfficial = dto.IsOfficial;
+            user.IsVerified = dto.IsVerified;
+
+            // Optionally update VerifiedDate when toggling IsVerified:
+            if (dto.IsVerified && user.VerifiedDate == null)
+            {
+                user.VerifiedDate = DateTime.UtcNow;
+            }
+            else if (!dto.IsVerified)
+            {
+                user.VerifiedDate = null;
+            }
+
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+        public class LoginRequest
+        {
+            public string Identifier { get; set; } // email or username
+            public string? Password { get; set; }
+            public bool RememberMe { get; set; }
+            public bool IsGoogleLogin { get; set; } // NEW
+
+            [JsonPropertyName("clientPublicIp")]
+            public string? ClientPublicIp { get; set; }
+        }
+
+        public class BanIpRequest { public string Ip { get; set; } }
+
+        public class ChangePasswordRequest
+        {
+            public string OldPassword { get; set; }
+            public string NewPassword { get; set; }
+        }
+
+        public class PrivacyToggleRequest
+        {
+            public int UserId { get; set; }
+            public bool IsPrivate { get; set; }
+        }
+
+        public class NotificationSettingsDto
+        {
+            public bool ProductUpdates { get; set; }
+            public bool CareerTips { get; set; }
+            public bool NewCareerPathAlerts { get; set; }
+            public bool Promotions { get; set; }
+        }
+
+        public class SetCareerRequest
+        {
+            public string Email { get; set; }
+            public int CareerPathId { get; set; }
+        }
     }
-     
-
-    public class LoginRequest
-    {
-        public string Identifier { get; set; } // email or username
-        public string? Password { get; set; }
-        public bool RememberMe { get; set; }
-        public bool IsGoogleLogin { get; set; } // NEW
-    }
-
-
-    public class ChangePasswordRequest
-{
-    public string OldPassword { get; set; }
-    public string NewPassword { get; set; }
-}
-
 }

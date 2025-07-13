@@ -370,7 +370,19 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(review);
         }
-      
+
+        [HttpGet("user/{userId}")]
+        public async Task<ActionResult<List<PerformanceReview>>> GetReviewsForUser(int userId)
+        {
+            var reviews = await _context.PerformanceReviews
+                .Where(r => r.UserID == userId)
+                .ToListAsync();
+
+            if (reviews == null || reviews.Count == 0)
+                return NotFound($"No performance reviews found for user {userId}.");
+
+            return Ok(reviews);
+        }
         // POST: api/PerformanceReviews/generate-monthly?userId=1
         [HttpPost("generate-monthly")]
         public async Task<IActionResult> GenerateMonthlyPerformance([FromQuery] int userId)

@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using VirtuPathAPI.Models;
 using VirtuPathAPI.Hubs;
 using VirtuPathAPI.Data;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +23,7 @@ builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs)
 builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<CommunityPostContext>(opt => opt.UseSqlServer(cs));
 
 
 builder.Services.AddDbContext<ChatContext>(options =>
@@ -90,6 +92,10 @@ builder.Services.AddSwaggerGen();
 //------------------------------------------------------------
 var app = builder.Build();
 
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 //------------------------------------------------------------
 // 7) PIPELINE
 //------------------------------------------------------------
@@ -104,7 +110,9 @@ else
     app.UseCors("AllowFrontend");
 }
 
+
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseStaticFiles();
 
 app.UseCookiePolicy();
@@ -124,6 +132,7 @@ app.Use(async (ctx, next) =>
 
     await next();
 });
+
 
 app.UseAuthorization();
 
