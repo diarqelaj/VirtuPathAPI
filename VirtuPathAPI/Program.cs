@@ -1,5 +1,4 @@
-﻿// Program.cs – VirtuPathAPI
-//------------------------------------------------------------
+﻿
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,19 +8,17 @@ using VirtuPathAPI.Data;
 using Microsoft.AspNetCore.SignalR;
 using VirtuPathAPI.Controllers;
 using CloudinaryDotNet;
-using CloudinaryDotNet.Actions;
 using dotenv.net;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
-
-// ← NEW IMPORTS:
 using Microsoft.AspNetCore.Authentication.Cookies;
 using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
-using VirtuPathAPI.Utilities; // for RsaKeyLoader
+using VirtuPathAPI.Utilities; 
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using CloudinaryDotNet.Actions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,9 +58,9 @@ builder.Services.AddSingleton<JsonWebKey>(sp =>
 builder.Services.AddSingleton<RSA>(sp =>
 {
     using var scope = sp.CreateScope();
-    var db    = scope.ServiceProvider.GetRequiredService<ChatContext>();
+    var db = scope.ServiceProvider.GetRequiredService<ChatContext>();
     var vault = db.ServerKeys.Single(k => k.UserId == 1);
-    var rsa   = RSA.Create();
+    var rsa = RSA.Create();
     rsa.ImportFromPem(vault.EncPrivKeyPem);   // or vault.PubKeyPem, whichever is private
     return rsa;
 });
@@ -77,8 +74,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services
   .AddSignalR()
   .AddJsonProtocol(options => {
-    options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-    options.PayloadSerializerOptions.DictionaryKeyPolicy  = JsonNamingPolicy.CamelCase;
+      options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+      options.PayloadSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
   });
 
 // Hook SignalR’s UserIdentifier to our session “UserID”
@@ -102,7 +99,7 @@ builder.Services.AddCors(options =>
     {
         p.WithOrigins(
             "https://virtu-path-ai.vercel.app",
-            "https://virtupathapi-54vt.onrender.com", 
+            "https://virtupathapi-54vt.onrender.com",
             "https://localhost:7072"
         )
         .AllowCredentials()
@@ -150,8 +147,8 @@ builder.Services
   .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
   .AddCookie(options =>
   {
-      options.LoginPath       = "/api/users/login";    // API will return 401, not a redirect
-      options.Cookie.Name     = ".VirtuPath.Auth";
+      options.LoginPath = "/api/users/login";    // API will return 401, not a redirect
+      options.Cookie.Name = ".VirtuPath.Auth";
       options.Cookie.HttpOnly = true;
       options.Cookie.SameSite = SameSiteMode.None;
       options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
@@ -194,8 +191,9 @@ builder.Services.AddSwaggerGen();
 // 8) BUILD
 //------------------------------------------------------------
 var app = builder.Build();
-app.UseForwardedHeaders(new ForwardedHeadersOptions {
-  ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
 
