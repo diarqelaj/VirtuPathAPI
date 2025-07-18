@@ -25,6 +25,10 @@
       "PackagePath": "staticwebassets/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg"
     },
     {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/sso/login-status.html",
+      "PackagePath": "staticwebassets/sso/login-status.html"
+    },
+    {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
       "PackagePath": "staticwebassets/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png"
     },

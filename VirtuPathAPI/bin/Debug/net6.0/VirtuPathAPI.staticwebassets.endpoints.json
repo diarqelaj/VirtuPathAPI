@@ -495,6 +495,88 @@
       ]
     },
     {
+      "Route": "sso/login-status.html",
+      "AssetFile": "sso/login-status.html",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "no-cache"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "855"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/html"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Fri, 18 Jul 2025 02:44:20 GMT"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs="
+        }
+      ]
+    },
+    {
+      "Route": "sso/login-status.wbzsf07yxz.html",
+      "AssetFile": "sso/login-status.html",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "855"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/html"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Fri, 18 Jul 2025 02:44:20 GMT"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "wbzsf07yxz"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs="
+        },
+        {
+          "Name": "label",
+          "Value": "sso/login-status.html"
+        }
+      ]
+    },
+    {
       "Route": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.gdijcu7zq7.png",
       "AssetFile": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
       "Selectors": [],

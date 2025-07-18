@@ -36,43 +36,110 @@ namespace VirtuPathAPI.Controllers
                           .Select(u => (int?)u.UserID)
                           .FirstOrDefaultAsync();
 
-// in ChatController.cs
-[HttpGet("messages/{withUserId:int}")]
-public async Task<IActionResult> GetMessages(int withUserId)
+        // in ChatController.cs
+        [HttpGet("messages/{withUserId:int}")]
+        public async Task<IActionResult> GetMessages(int withUserId)
+        {
+            var me = GetCurrentUserId();
+            if (me == null) return Unauthorized();
+            if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
+
+            var rows = await _context.ChatMessages
+                .Where(m =>
+                    (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
+                    (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver))
+                .OrderBy(m => m.SentAt)
+                .Select(m => new
+                {
+                    id = m.Id,
+                    senderId = m.SenderId,
+                    receiverId = m.ReceiverId,
+
+                    // **REAL** columns → alias them to what your client wants
+                    iv = m.Iv,
+                    message = m.Message,
+                    tag = m.Tag,
+
+                    sentAt = m.SentAt,
+                    replyToMessageId = m.ReplyToMessageId,
+                    isEdited = m.IsEdited,
+                    isDeletedForSender = m.IsDeletedForSender,
+                    isDeletedForReceiver = m.IsDeletedForReceiver,
+                    isDelivered = m.IsDelivered,
+                    deliveredAt = m.DeliveredAt,
+                    isRead = m.IsRead,
+                    readAt = m.ReadAt
+                })
+                .ToListAsync();
+
+            return Ok(rows);
+        }
+[HttpGet("unread‑counts")]
+public async Task<IActionResult> GetUnreadCounts()
 {
     var me = GetCurrentUserId();
     if (me == null) return Unauthorized();
-    if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
 
-    var rows = await _context.ChatMessages
+    // 1) Pick every message sent *to* me that’s still unread
+    // 2) Compute “lastSentId” for this conversation on the fly
+    // 3) Filter only those whose Id > lastSentId (i.e. arrived after my last reply)
+    // 4) Group and count
+    var counts = await _context.ChatMessages
         .Where(m =>
-            (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
-            (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver))
-        .OrderBy(m => m.SentAt)
-        .Select(m => new {
-            id               = m.Id,
-            senderId         = m.SenderId,
-            receiverId       = m.ReceiverId,
-
-            // **REAL** columns → alias them to what your client wants
-            iv            = m.Iv,
-            message    = m.Message,
-            tag           = m.Tag,
-
-            sentAt           = m.SentAt,
-            replyToMessageId = m.ReplyToMessageId,
-            isEdited         = m.IsEdited,
-            isDeletedForSender   = m.IsDeletedForSender,
-            isDeletedForReceiver = m.IsDeletedForReceiver,
-            isDelivered      = m.IsDelivered,
-            deliveredAt      = m.DeliveredAt,
-            isRead           = m.IsRead,
-            readAt           = m.ReadAt
+            m.ReceiverId == me.Value &&
+            !m.IsRead
+        )
+        .Select(m => new
+        {
+            SenderId   = m.SenderId,
+            // If I’ve replied, find the max Id I sent back to them; else 0
+            LastSentId = _context.ChatMessages
+                .Where(x => x.SenderId == me.Value && x.ReceiverId == m.SenderId)
+                .Select(x => (int?)x.Id)
+                .Max() ?? 0,
+            ThisMsgId  = m.Id
+        })
+        .Where(x => x.ThisMsgId > x.LastSentId)
+        .GroupBy(x => x.SenderId)
+        .Select(g => new {
+            friendId    = g.Key,
+            unreadCount = g.Count()
         })
         .ToListAsync();
 
-    return Ok(rows);
+    return Ok(counts);
 }
+[HttpPost("mark-read/{withUserId:int}")]
+public async Task<IActionResult> MarkConversationRead(int withUserId)
+{
+    var me = GetCurrentUserId();
+    if (me == null) return Unauthorized();
+
+    var now = DateTimeOffset.UtcNow;
+
+    // Fetch into memory
+    var toMark = await _context.ChatMessages
+        .Where(m =>
+            m.SenderId   == withUserId &&
+            m.ReceiverId == me.Value   &&
+            !m.IsRead
+        )
+        .ToListAsync();
+
+    // Mark each one read
+    foreach (var msg in toMark)
+    {
+        msg.IsRead = true;
+        msg.ReadAt = now;
+    }
+
+    // Persist
+    await _context.SaveChangesAsync();
+
+    return Ok(new { marked = toMark.Count });
+}
+
+
 
 
 [HttpGet("conversations/key/{withUserId:int}")]
