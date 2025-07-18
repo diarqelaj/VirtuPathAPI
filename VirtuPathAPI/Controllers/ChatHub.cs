@@ -16,18 +16,15 @@ namespace VirtuPathAPI.Hubs
     {
         private readonly ChatContext _context;
         private readonly IPresenceTracker _presence;
-        private readonly RSA _rsaPrivate;  // ← server’s RSA private key
+      
 
-        public ChatHub(
-            ChatContext context,
-            IPresenceTracker presenceTracker,
-            RSA rsaPrivate      // ← injected via DI
-        )
-        {
-            _context    = context;
-            _presence   = presenceTracker;
-            _rsaPrivate = rsaPrivate;
-        }
+          public ChatHub(
+        ChatContext context,
+        IPresenceTracker presenceTracker
+    ) {
+        _context  = context;
+        _presence = presenceTracker;
+    }
 
         // ─── Typing‐throttle setup ────────────────────────
         private static readonly TimeSpan TypingThrottle = TimeSpan.FromMilliseconds(500);
@@ -218,97 +215,79 @@ namespace VirtuPathAPI.Hubs
 
         // ─── 5) SEND MESSAGE (store blob + broadcast) ────
         // -----------------------------------------------------------------------------
-        public async Task SendMessage(
-            int    receiverId,
-            string dhPubB64,
-            int    pn,
-            int    n,
-            string ivB64,
-            string ciphertextB64,
-            string tagB64,
-            int?   replyToMessageId,
-            string? reactionEmoji = null) 
-        {
-            var me = GetCurrentUserId();
-            if (me == null) throw new HubException("Not logged in.");
-            if (!await CanChatAsync(me.Value, receiverId))
-                throw new HubException("Not friends or request not accepted.");
+         public async Task SendMessage(
+        int    receiverId,
+        string ivB64,
+        string ciphertextB64,
+        string tagB64,
+        int?   replyToMessageId,
+        string? reactionEmoji = null
+    ) {
+        var me = Context.GetHttpContext()?.Session.GetInt32("UserID")
+                 ?? throw new HubException("Not logged in.");
 
-            var msg = new ChatMessage
-            {
-                SenderId   = me.Value,
-                ReceiverId = receiverId,
+        if (!await CanChatAsync(me, receiverId))
+            throw new HubException("Not friends or request not accepted.");
 
-                // ratchet header
-                DhPubB64 = dhPubB64.Trim(),
-                PN       = pn,
-                N        = n,
+        // 1) persist
+        var msg = new ChatMessage {
+            SenderId         = me,
+            ReceiverId       = receiverId,
+            Iv               = ivB64,
+            Message          = ciphertextB64,
+            Tag              = tagB64,
+            SentAt           = DateTimeOffset.UtcNow,
+            ReplyToMessageId = replyToMessageId
+        };
+        _context.ChatMessages.Add(msg);
 
-                // encrypted blob
-                Iv      = ivB64,
-                Message = ciphertextB64,
-                Tag     = tagB64,
-
-                SentAt           = DateTimeOffset.UtcNow,
-                ReplyToMessageId = replyToMessageId
-            };
-
-            _context.ChatMessages.Add(msg);
-
-            if (!string.IsNullOrWhiteSpace(reactionEmoji))
-            {
-                _context.MessageReactions.Add(new MessageReaction
-                {
-                    MessageId = msg.Id,    // EF fills after SaveChanges
-                    UserId    = me.Value,
-                    Emoji     = reactionEmoji!
-                });
-            }
-
-            await _context.SaveChangesAsync(); 
-
-            /* full DTO — now includes the two wrapped keys 🚀 */
-           var dto = new
-            {
-                id               = msg.Id,
-                senderId         = msg.SenderId,
-                receiverId       = msg.ReceiverId,
-
-                // ratchet header (lower‐case!)
-                dhPubB64         = msg.DhPubB64,  // ← must match data.dhPubB64
-                pn               = msg.PN,        // ← must match data.pn
-                n                = msg.N,         // ← must match data.n
-
-                // encrypted blob
-                ivB64            = msg.Iv,                // ← must match data.ivB64
-                ciphertextB64    = msg.Message,           // ← must match data.ciphertextB64
-                tagB64           = msg.Tag,               // ← must match data.tagB64
-
-                // metadata
-                sentAt           = msg.SentAt,
-                replyToMessageId = msg.ReplyToMessageId
-            };
-
-
-            // 1) optimistic “delivered” back to myself
-            _ = Clients.Caller.SendAsync("MessageDelivered", msg.Id);
-
-            // 2) encrypted payload to both sides
-            await Task.WhenAll(
-                Clients.User(receiverId.ToString()).SendAsync("ReceiveEncryptedMessage", dto),
-                Clients.Caller.SendAsync("ReceiveEncryptedMessage", dto)
-            );
-
-            // 3) if there was an inline reaction → push that too
-            if (!string.IsNullOrWhiteSpace(reactionEmoji))
-            {
-                var reactDto = new { messageId = msg.Id, userId = me.Value, emoji = reactionEmoji };
-                await Task.WhenAll(
-                    Clients.User(receiverId.ToString()).SendAsync("MessageReacted", reactDto),
-                    Clients.Caller.SendAsync("MessageReacted", reactDto)
-                );
-            }
+        if (!string.IsNullOrWhiteSpace(reactionEmoji)) {
+            _context.MessageReactions.Add(new MessageReaction {
+                MessageId = msg.Id,
+                UserId    = me,
+                Emoji     = reactionEmoji
+            });
         }
+
+        await _context.SaveChangesAsync();
+
+        // 2) shape the payload
+        var dto = new {
+            id               = msg.Id,
+            senderId         = msg.SenderId,
+            receiverId       = msg.ReceiverId,
+            ivB64            = msg.Iv,
+            ciphertextB64    = msg.Message,
+            tagB64           = msg.Tag,
+            sentAt           = msg.SentAt,
+            replyToMessageId = msg.ReplyToMessageId
+        };
+
+        // 3) broadcast
+        _ = Clients.Caller.SendAsync("MessageDelivered", msg.Id);
+        await Task.WhenAll(
+            Clients.User(receiverId.ToString())
+                   .SendAsync("ReceiveEncryptedMessage", dto),
+            Clients.Caller
+                   .SendAsync("ReceiveEncryptedMessage", dto)
+        );
+
+        // 4) inline reaction
+        if (!string.IsNullOrWhiteSpace(reactionEmoji)) {
+            var reactDto = new {
+                messageId = msg.Id,
+                userId    = me,
+                emoji     = reactionEmoji
+            };
+            await Task.WhenAll(
+                Clients.User(receiverId.ToString()).SendAsync("MessageReacted", reactDto),
+                Clients.Caller.SendAsync("MessageReacted",    reactDto)
+            );
+        }
+    }
+
+    // remove the old SendMessage overload with dhPubB64/pn/n
+
 
         // ─── 6) EDIT MESSAGE ─────────────────────────────
         public async Task EditMessage(int messageId, string newMessage)

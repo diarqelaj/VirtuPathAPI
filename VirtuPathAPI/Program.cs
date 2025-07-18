@@ -1,4 +1,4 @@
-﻿// Program.cs – VirtuPathAPI
+﻿﻿// Program.cs – VirtuPathAPI
 //------------------------------------------------------------
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -13,6 +13,9 @@ using CloudinaryDotNet.Actions;
 using dotenv.net;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Security;
 
 // ← NEW IMPORTS:
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -233,6 +236,41 @@ app.Use(async (ctx, next) =>
 
     await next();
 });
+using (var scope = app.Services.CreateScope())
+{
+    var db        = scope.ServiceProvider.GetRequiredService<UserContext>();
+    var dp        = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
+    var protector = dp.CreateProtector("ratchet");
+
+    // find any users missing an X25519 blob
+    var toSeed = db.CobaltUserKeyVault
+                   .Where(v => string.IsNullOrEmpty(v.EncRatchetPrivKeyJson))
+                   .ToList();
+
+    foreach (var vault in toSeed)
+    {
+        // 1) generate an X25519 keypair with BouncyCastle
+        var gen = new X25519KeyPairGenerator();
+        gen.Init(new X25519KeyGenerationParameters(new SecureRandom()));
+        var kp  = gen.GenerateKeyPair();
+        var privParam = (X25519PrivateKeyParameters)kp.Private;
+        var pubParam  = (X25519PublicKeyParameters)kp.Public;
+
+        var privBytes = privParam.GetEncoded();  // 32 bytes
+        var pubBytes  = pubParam.GetEncoded();   // 32 bytes
+
+        // 2) serialize & protect
+        var blob = JsonSerializer.Serialize(new {
+            priv = Convert.ToBase64String(privBytes),
+            pub  = Convert.ToBase64String(pubBytes)
+        });
+        vault.EncRatchetPrivKeyJson = protector.Protect(blob);
+        vault.RotatedAt            = DateTime.UtcNow;
+    }
+
+    if (toSeed.Any())
+        db.SaveChanges();
+}
 
 // ─── NEW: Enable authentication before authorization ───────────────────
 app.UseAuthentication();

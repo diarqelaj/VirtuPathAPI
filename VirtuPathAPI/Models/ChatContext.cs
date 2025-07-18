@@ -11,7 +11,8 @@ namespace VirtuPathAPI.Models
         public DbSet<UserFriend>       UserFriends      { get; set; }
         public DbSet<User>             Users            { get; set; }
         public DbSet<UserBlock>        UserBlocks       { get; set; }
-        public DbSet<UserMute>         UserMutes        { get; set; }
+        public DbSet<ChatConversation> ChatConversations { get; set; }
+        public DbSet<UserMute> UserMutes { get; set; }
         public DbSet<UserPin>          UserPins         { get; set; }
         public DbSet<MessageReaction>  MessageReactions { get; set; }
         public DbSet<ChatRequest>      ChatRequests     { get; set; }
@@ -24,7 +25,7 @@ namespace VirtuPathAPI.Models
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
+   
             // ─────────── existing indexes / relationships ───────────
             modelBuilder.Entity<UserBlock>()
                         .HasIndex(b => new { b.BlockerId, b.BlockedId })
@@ -53,6 +54,9 @@ namespace VirtuPathAPI.Models
                         .WithMany()
                         .HasForeignKey(r => r.UserId)
                         .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<ChatConversation>()
+                        .HasIndex(c => new { c.UserAId, c.UserBId })
+                        .IsUnique();
 
             modelBuilder.Entity<CobaltUserKeyVault>()
                         .ToTable("CobaltUserKeyVault");

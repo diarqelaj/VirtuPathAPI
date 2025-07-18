@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "Zb8m2kYxDB8=",
+  "dgSpecHash": "O/DNh9GdoWE=",
   "success": true,
   "projectFilePath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
   "expectedPackageFiles": [
     "/home/pluto/.nuget/packages/bcrypt.net-next/4.0.3/bcrypt.net-next.4.0.3.nupkg.sha512",
+    "/home/pluto/.nuget/packages/bouncycastle.netcore/2.2.1/bouncycastle.netcore.2.2.1.nupkg.sha512",
     "/home/pluto/.nuget/packages/cloudinarydotnet/1.27.5/cloudinarydotnet.1.27.5.nupkg.sha512",
     "/home/pluto/.nuget/packages/dotenv.net/3.2.1/dotenv.net.3.2.1.nupkg.sha512",
     "/home/pluto/.nuget/packages/humanizer.core/2.8.26/humanizer.core.2.8.26.nupkg.sha512",
@@ -144,9 +145,9 @@
     "/home/pluto/.nuget/packages/system.threading.channels/8.0.0/system.threading.channels.8.0.0.nupkg.sha512",
     "/home/pluto/.nuget/packages/system.threading.tasks/4.3.0/system.threading.tasks.4.3.0.nupkg.sha512",
     "/home/pluto/.nuget/packages/system.windows.extensions/4.7.0/system.windows.extensions.4.7.0.nupkg.sha512",
-    "/home/pluto/.nuget/packages/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
     "/home/pluto/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.36/microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512",
-    "/home/pluto/.nuget/packages/microsoft.netcore.app.host.linux-x64/6.0.36/microsoft.netcore.app.host.linux-x64.6.0.36.nupkg.sha512"
+    "/home/pluto/.nuget/packages/microsoft.netcore.app.host.linux-x64/6.0.36/microsoft.netcore.app.host.linux-x64.6.0.36.nupkg.sha512",
+    "/home/pluto/.nuget/packages/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg.sha512"
   ],
   "logs": []
 }
