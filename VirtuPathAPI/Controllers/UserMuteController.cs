@@ -16,10 +16,10 @@ public class UserMuteController : ControllerBase
 
     private int? GetUserId() => HttpContext.Session.GetInt32("UserID");
 
-    [HttpPost("mute/{mutedId}")]
+   [HttpPost("mute/{mutedId}")]
     public async Task<IActionResult> MuteUser(int mutedId)
     {
-        var me = GetUserId();
+        var me = GetUserId(); // ← Session-based
         if (me == null) return Unauthorized();
 
         if (await _context.UserMutes.AnyAsync(x => x.MuterId == me && x.MutedId == mutedId))
@@ -29,6 +29,7 @@ public class UserMuteController : ControllerBase
         await _context.SaveChangesAsync();
         return Ok();
     }
+
 
     [HttpDelete("unmute/{mutedId}")]
     public async Task<IActionResult> UnmuteUser(int mutedId)

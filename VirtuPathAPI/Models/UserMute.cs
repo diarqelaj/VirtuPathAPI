@@ -1,5 +1,7 @@
+using System.ComponentModel.DataAnnotations.Schema;
 namespace VirtuPathAPI.Models
 {
+    [Table("UserMute")]
     public class UserMute
     {
         public int Id { get; set; }
