@@ -279,7 +279,8 @@ using (var scope = app.Services.CreateScope())
 // ─── NEW: Enable authentication before authorization ───────────────────
 app.UseAuthentication();
 app.UseAuthorization();
-
+app.MapGet("/", () => Results.Ok("API is up"));
+app.MapGet("/health", () => Results.Ok("OK"));
 
 app.MapControllers();
 
