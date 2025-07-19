@@ -102,33 +102,6 @@ builder.Services.AddSingleton(cloudinary);
 //------------------------------------------------------------
 // 5) CORS POLICIES (unchanged)
 //------------------------------------------------------------
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowFrontend", p =>
-    {
-        p.WithOrigins(
-            "https://virtu-path-ai.vercel.app",
-            "https://virtupathapi-54vt.onrender.com",
-            "https://localhost:7072"
-        )
-        .AllowCredentials()
-        .AllowAnyHeader()
-        .AllowAnyMethod();
-    });
-
-    options.AddPolicy("AllowSwagger", p =>
-    {
-        p.WithOrigins(
-            "https://localhost:7072",
-            "https://localhost:3000",
-            "http://localhost:3000",
-            "http://localhost:5249"
-        )
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials();
-    });
-});
 
 //------------------------------------------------------------
 // 6) SESSION + COOKIE POLICY
@@ -205,6 +178,37 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
+app.UseStaticFiles();
+
+app.UseCookiePolicy();
+app.UseSession();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", p =>
+    {
+        p.WithOrigins(
+            "https://virtu-path-ai.vercel.app",
+            "https://virtupathapi-54vt.onrender.com",
+            "https://localhost:7072"
+        )
+        .AllowCredentials()
+        .AllowAnyHeader()
+        .AllowAnyMethod();
+    });
+
+    options.AddPolicy("AllowSwagger", p =>
+    {
+        p.WithOrigins(
+            "https://localhost:7072",
+            "https://localhost:3000",
+            "http://localhost:3000",
+            "http://localhost:5249"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials();
+    });
+});
 
 //------------------------------------------------------------
 // 9) PIPELINE
@@ -221,10 +225,7 @@ else
 }
 
 
-app.UseStaticFiles();
 
-app.UseCookiePolicy();
-app.UseSession();
 
 // ✅ Remember-me Rehydration Middleware
 app.Use(async (ctx, next) =>
