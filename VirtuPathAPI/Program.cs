@@ -28,6 +28,10 @@ using CloudinaryDotNet.Actions;
 var builder = WebApplication.CreateBuilder(args);
 
 //------------------------------------------------------------
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost
+       .UseUrls($"http://*:{port}")
+       .ConfigureKestrel(o => o.ListenAnyIP(int.Parse(port)));
 // 1) DATABASE CONTEXTS
 //------------------------------------------------------------
 string cs = builder.Configuration.GetConnectionString("VirtuPathDB");
@@ -216,7 +220,7 @@ else
     app.UseCors("AllowFrontend");
 }
 
-app.UseHttpsRedirection();
+
 app.UseStaticFiles();
 
 app.UseCookiePolicy();
