@@ -29,18 +29,34 @@ var builder = WebApplication.CreateBuilder(args);
 //────────────────────────────────────────────────────────────────────────────
 // 0) CORS POLICIES
 //────────────────────────────────────────────────────────────────────────────
+var apiBase = Environment.GetEnvironmentVariable("NEXT_PUBLIC_API_BASE_URL");
+string? apiOrigin = null;
+if (!string.IsNullOrWhiteSpace(apiBase))
+{
+    try
+    {
+        apiOrigin = new Uri(apiBase).GetLeftPart(UriPartial.Authority);
+    }
+    catch { /* ignore parse errors */ }
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins(
+        // required origins
+        var origins = new List<string>
+        {
             "https://virtu-path-ai.vercel.app",
-            "https://virtupathapi-54vt.onrender.com",
             "https://localhost:7072"
-        )
-        .AllowCredentials()
-        .AllowAnyHeader()
-        .AllowAnyMethod();
+        };
+        if (!string.IsNullOrEmpty(apiOrigin))
+            origins.Add(apiOrigin);
+
+        p.WithOrigins(origins.ToArray())
+         .AllowCredentials()
+         .AllowAnyHeader()
+         .AllowAnyMethod();
     });
 
     options.AddPolicy("AllowSwagger", p =>
@@ -49,7 +65,7 @@ builder.Services.AddCors(options =>
             "https://localhost:7072",
             "https://localhost:3000",
             "http://localhost:3000",
-            "http://localhost:5249"
+            "https://localhost:5249"
         )
         .AllowCredentials()
         .AllowAnyHeader()
@@ -61,9 +77,14 @@ builder.Services.AddCors(options =>
 // 1) Kestrel / PORT
 //────────────────────────────────────────────────────────────────────────────
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-builder.WebHost
-       .UseUrls($"http://*:{port}")
-       .ConfigureKestrel(o => o.ListenAnyIP(int.Parse(port)));
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(8080); // HTTP
+    options.ListenLocalhost(7072, listenOptions =>
+    {
+        listenOptions.UseHttps(); // HTTPS
+    });
+});
 
 //────────────────────────────────────────────────────────────────────────────
 // 2) DATABASE CONTEXTS
