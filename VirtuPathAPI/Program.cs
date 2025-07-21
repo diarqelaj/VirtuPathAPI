@@ -77,13 +77,9 @@ builder.Services.AddCors(options =>
 // 1) Kestrel / PORT
 //────────────────────────────────────────────────────────────────────────────
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-builder.WebHost.ConfigureKestrel(options =>
+builder.WebHost.ConfigureKestrel(o =>
 {
-    options.ListenAnyIP(8080); // HTTP
-    options.ListenLocalhost(7072, listenOptions =>
-    {
-        listenOptions.UseHttps(); // HTTPS
-    });
+    o.ListenAnyIP(8080);
 });
 
 //────────────────────────────────────────────────────────────────────────────
@@ -137,11 +133,16 @@ builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
 // 5) CLOUDINARY
 //────────────────────────────────────────────────────────────────────────────
 DotEnv.Load(new DotEnvOptions(probeForEnv: true));
-var rawUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL")?.Trim();
-var cloudinary = new Cloudinary(rawUrl) { Api = { Secure = true } };
-builder.Services.AddSingleton(cloudinary);
-
-//────────────────────────────────────────────────────────────────────────────
+var rawUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL") ?? "";
+if (rawUrl.StartsWith("cloudinary://"))
+{
+    var cloud = new Cloudinary(rawUrl) { Api = { Secure = true } };
+    builder.Services.AddSingleton(cloud);
+}
+else
+{
+    Console.WriteLine("CLOUDINARY_URL mungon ose invalid – po vazhdoj pa Cloudinary.");
+}
 // 6) SESSION & AUTHENTICATION
 //────────────────────────────────────────────────────────────────────────────
 builder.Services.AddDbContext<DataProtectionKeyContext>(opts =>
