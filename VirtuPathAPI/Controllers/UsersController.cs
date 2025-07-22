@@ -514,6 +514,21 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = $"Profile privacy {(req.IsPrivate ? "enabled" : "disabled")}.", isPrivate = user.IsProfilePrivate });
         }
+        [HttpPut("{id}/profile")]
+        public async Task<IActionResult> UpdateProfile(int id, [FromBody] UpdateProfileDto dto)
+        {
+            var u = await _context.Users.FindAsync(id);
+            if (u == null) return NotFound();
+
+            u.FullName         = dto.FullName;
+            u.Bio              = dto.Bio;
+            u.About            = dto.About;
+            u.IsProfilePrivate = dto.IsProfilePrivate;
+
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
 
         [HttpGet("notifications/{id}")]
         public async Task<IActionResult> GetNotificationSettings(int id)
@@ -923,7 +938,7 @@ namespace VirtuPathAPI.Controllers
             public bool NewCareerPathAlerts { get; set; }
             public bool Promotions { get; set; }
         }
-
+        public record UpdateProfileDto(string FullName, string? Bio, string? About, bool IsProfilePrivate);
         public class SetCareerRequest
         {
             public string Email { get; set; }
