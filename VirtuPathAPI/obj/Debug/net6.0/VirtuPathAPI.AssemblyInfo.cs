@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("VirtuPathAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a8c6889983580e839f1153dea383b81b7fc32aab")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9aa184aa5c6da6a7dc2c59ae66c8639c8b70d5b4")]
 [assembly: System.Reflection.AssemblyProductAttribute("VirtuPathAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("VirtuPathAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
