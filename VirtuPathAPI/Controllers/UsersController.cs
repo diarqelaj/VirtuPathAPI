@@ -279,47 +279,58 @@ namespace VirtuPathAPI.Controllers
             return NoContent();
         }
 
-       [HttpPost("upload-profile-picture")]
+      [HttpPost("upload-profile-picture")]
         public async Task<IActionResult> UploadProfilePicture([FromForm] IFormFile file, [FromForm] int userId)
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No file uploaded.");
-
             if (file.Length > 5 * 1024 * 1024)
                 return BadRequest("Image must be less than 5MB.");
 
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext = Path.GetExtension(file.FileName).ToLower();
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!allowedExtensions.Contains(ext))
                 return BadRequest("Only .jpg, .jpeg, .png, .webp allowed.");
 
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound("User not found.");
 
-            // Delete previous from Cloudinary if present
             if (!string.IsNullOrEmpty(user.ProfilePicturePublicId))
-            {
                 await _cloud.DestroyAsync(new DeletionParams(user.ProfilePicturePublicId));
+
+            Stream uploadStream;
+            string uploadFileName;
+            if (ext != ".webp")
+            {
+                using var img = Image.Load(file.OpenReadStream());
+                var ms = new MemoryStream();
+                await img.SaveAsync(ms, new WebpEncoder());
+                ms.Position = 0;
+                uploadStream    = ms;
+                uploadFileName  = Path.GetFileNameWithoutExtension(file.FileName) + ".webp";
+            }
+            else
+            {
+                uploadStream    = file.OpenReadStream();
+                uploadFileName  = file.FileName;
             }
 
-            // Upload to Cloudinary
             var uploadParams = new ImageUploadParams
             {
-                File   = new FileDescription(file.FileName, file.OpenReadStream()),
+                File   = new FileDescription(uploadFileName, uploadStream),
                 Folder = "virtupath/users/profile",
                 Transformation = new Transformation()
                     .Width(512).Height(512).Crop("limit")
-                    .Quality("auto").FetchFormat("auto") // auto webp/avif, etc
+                    .Quality("auto")
+                    .FetchFormat("auto") 
             };
 
             var uploadResult = await _cloud.UploadAsync(uploadParams);
             if (uploadResult.StatusCode != System.Net.HttpStatusCode.OK)
                 return StatusCode(500, "Cloudinary upload failed.");
 
-            // Save URLs + publicId
             user.ProfilePictureUrl      = uploadResult.SecureUrl?.ToString();
             user.ProfilePicturePublicId = uploadResult.PublicId;
-
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
@@ -329,6 +340,7 @@ namespace VirtuPathAPI.Controllers
                 profilePicturePublicId = user.ProfilePicturePublicId
             });
         }
+
 
             [HttpDelete("delete-profile-picture")]
             public async Task<IActionResult> DeleteProfilePicture([FromQuery] int userId)
@@ -357,7 +369,7 @@ namespace VirtuPathAPI.Controllers
             if (file.Length > 5 * 1024 * 1024)   return BadRequest("Image must be < 5MB.");
 
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext = Path.GetExtension(file.FileName).ToLower();
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!allowedExtensions.Contains(ext))
                 return BadRequest("Only .jpg, .jpeg, .png, .webp allowed.");
 
@@ -367,13 +379,31 @@ namespace VirtuPathAPI.Controllers
             if (!string.IsNullOrEmpty(user.CoverImagePublicId))
                 await _cloud.DestroyAsync(new DeletionParams(user.CoverImagePublicId));
 
+            Stream uploadStream;
+            string uploadFileName;
+            if (ext != ".webp")
+            {
+                using var img = Image.Load(file.OpenReadStream());
+                var ms = new MemoryStream();
+                await img.SaveAsync(ms, new WebpEncoder());
+                ms.Position = 0;
+                uploadStream    = ms;
+                uploadFileName  = Path.GetFileNameWithoutExtension(file.FileName) + ".webp";
+            }
+            else
+            {
+                uploadStream    = file.OpenReadStream();
+                uploadFileName  = file.FileName;
+            }
+
             var uploadParams = new ImageUploadParams
             {
-                File   = new FileDescription(file.FileName, file.OpenReadStream()),
+                File   = new FileDescription(uploadFileName, uploadStream),
                 Folder = "virtupath/users/cover",
                 Transformation = new Transformation()
                     .Width(1280).Height(720).Crop("limit")
-                    .Quality("auto").FetchFormat("auto")
+                    .Quality("auto")
+                    .FetchFormat("auto")
             };
 
             var result = await _cloud.UploadAsync(uploadParams);
@@ -382,7 +412,6 @@ namespace VirtuPathAPI.Controllers
 
             user.CoverImageUrl      = result.SecureUrl?.ToString();
             user.CoverImagePublicId = result.PublicId;
-
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
