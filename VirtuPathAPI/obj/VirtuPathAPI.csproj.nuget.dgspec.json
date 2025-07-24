@@ -81,7 +81,7 @@
             },
             "SixLabors.ImageSharp": {
               "target": "Package",
-              "version": "[3.1.8, )"
+              "version": "[3.1.10, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
