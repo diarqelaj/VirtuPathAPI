@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using ImgSize = SixLabors.ImageSharp.Size;
+using SixLabors.ImageSharp.Formats.Webp;
 
 namespace VirtuPathAPI.Controllers
 {
