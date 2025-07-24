@@ -316,14 +316,13 @@ namespace VirtuPathAPI.Controllers
                 uploadFileName  = file.FileName;
             }
 
-            var uploadParams = new ImageUploadParams
-            {
-                File   = new FileDescription(uploadFileName, uploadStream),
-                Folder = "virtupath/users/profile",
-                Transformation = new Transformation()
-                    .Width(512).Height(512).Crop("limit")
-                    .Quality("auto")
-                    .FetchFormat("auto") 
+           var uploadParams = new ImageUploadParams {
+            File           = new FileDescription(uploadFileName, uploadStream),
+            Folder         = "virtupath/users/profile",
+            Format         = "webp",                    // ← force storing as WebP
+            Transformation = new Transformation()
+                .Width(512).Height(512).Crop("limit")
+                .Quality("auto")
             };
 
             var uploadResult = await _cloud.UploadAsync(uploadParams);
@@ -401,11 +400,13 @@ namespace VirtuPathAPI.Controllers
             {
                 File   = new FileDescription(uploadFileName, uploadStream),
                 Folder = "virtupath/users/cover",
+                Format         = "webp",   
                 Transformation = new Transformation()
                     .Width(1280).Height(720).Crop("limit")
                     .Quality("auto")
                     .FetchFormat("auto")
             };
+
 
             var result = await _cloud.UploadAsync(uploadParams);
             if (result.StatusCode != System.Net.HttpStatusCode.OK)
