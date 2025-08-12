@@ -211,7 +211,11 @@ builder.Services.AddControllers()
     });
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    // Use full names (and replace '+' for nested types) to avoid schema ID collisions
+    c.CustomSchemaIds(t => (t.FullName ?? t.Name).Replace("+", "."));
+});
 
 //────────────────────────────────────────────────────────────────────────────
 // 8) BUILD APP & PIPELINE
