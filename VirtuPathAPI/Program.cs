@@ -101,6 +101,8 @@ builder.Services.AddDbContext<CommunityPostContext>(opt => opt.UseSqlServer(cs))
 builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<DataProtectionKeyContext>(opt => opt.UseSqlServer(cs));
 
+builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
+
 //────────────────────────────────────────────────────────────────────────────
 // 3) RSA KEYS & HYBRID ENCRYPTION
 //────────────────────────────────────────────────────────────────────────────
@@ -132,7 +134,7 @@ builder.Services
     .AddJsonProtocol(opts =>
     {
         opts.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        opts.PayloadSerializerOptions.DictionaryKeyPolicy  = JsonNamingPolicy.CamelCase;
+        opts.PayloadSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
     });
 builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
 
@@ -162,22 +164,22 @@ builder.Services
 
 builder.Services.AddSession(opt =>
 {
-    opt.Cookie.Name         = ".VirtuPath.Session";
-    opt.Cookie.HttpOnly     = true;
-    opt.Cookie.IsEssential  = true;
+    opt.Cookie.Name = ".VirtuPath.Session";
+    opt.Cookie.HttpOnly = true;
+    opt.Cookie.IsEssential = true;
     opt.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    opt.Cookie.SameSite     = SameSiteMode.None;
-    opt.IdleTimeout         = TimeSpan.FromMinutes(360);
+    opt.Cookie.SameSite = SameSiteMode.None;
+    opt.IdleTimeout = TimeSpan.FromMinutes(360);
 });
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.LoginPath           = "/api/users/login";
-        options.Cookie.Name         = ".VirtuPath.Auth";
-        options.Cookie.HttpOnly     = true;
-        options.Cookie.SameSite     = SameSiteMode.None;
+        options.LoginPath = "/api/users/login";
+        options.Cookie.Name = ".VirtuPath.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.None;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
         options.Events.OnRedirectToLogin = ctx =>
@@ -203,9 +205,9 @@ builder.Services.AddAuthorization(opts =>
 builder.Services.AddControllers()
     .AddJsonOptions(opts =>
     {
-        opts.JsonSerializerOptions.PropertyNamingPolicy        = JsonNamingPolicy.CamelCase;
+        opts.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         opts.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-        opts.JsonSerializerOptions.DefaultIgnoreCondition      = JsonIgnoreCondition.WhenWritingNull;
+        opts.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -271,18 +273,18 @@ using (var scope = app.Services.CreateScope())
         {
             var gen = new X25519KeyPairGenerator();
             gen.Init(new X25519KeyGenerationParameters(new SecureRandom()));
-            var kp        = gen.GenerateKeyPair();
+            var kp = gen.GenerateKeyPair();
             var privParam = (X25519PrivateKeyParameters)kp.Private;
-            var pubParam  = (X25519PublicKeyParameters)kp.Public;
+            var pubParam = (X25519PublicKeyParameters)kp.Public;
 
             var blob = JsonSerializer.Serialize(new
             {
                 priv = Convert.ToBase64String(privParam.GetEncoded()),
-                pub  = Convert.ToBase64String(pubParam.GetEncoded())
+                pub = Convert.ToBase64String(pubParam.GetEncoded())
             });
 
             vault.EncRatchetPrivKeyJson = protector.Protect(blob);
-            vault.RotatedAt              = DateTime.UtcNow;
+            vault.RotatedAt = DateTime.UtcNow;
         }
 
         if (toSeed.Any()) db.SaveChanges();
