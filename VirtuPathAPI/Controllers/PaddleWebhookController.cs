@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,7 +17,7 @@ namespace VirtuPathAPI.Controllers
         private readonly UserSubscriptionContext _subs;
         private readonly ILogger<PaddleWebhookController> _log;
         private readonly string _secret;
-        private readonly string? _paddleApiKey; // optional for customer email fallback
+        private readonly string? _paddleApiKey; // optional for customer email / confirm()
 
         public PaddleWebhookController(
             UserContext users,
@@ -27,11 +28,14 @@ namespace VirtuPathAPI.Controllers
             _users = users;
             _subs  = subs;
             _log   = log;
-            _secret = cfg["Paddle:WebhookSecret"] ?? throw new InvalidOperationException("Missing Paddle:WebhookSecret");
-            _paddleApiKey = cfg["Paddle:ApiKey"]; // optional, only used if set
+
+            _secret = cfg["Paddle:WebhookSecret"]
+                      ?? throw new InvalidOperationException("Missing Paddle:WebhookSecret");
+
+            _paddleApiKey = cfg["Paddle:ApiKey"]; // used by /confirm and email fallback
         }
 
-        // ---------- Payload models (aligned with your sample) ----------
+        // ---------- Payload models (aligned with Paddle v2) ----------
         private sealed record PaddleEvent(string event_id, string event_type, DateTime occurred_at, Transaction? data);
 
         private sealed record Transaction(
@@ -39,10 +43,10 @@ namespace VirtuPathAPI.Controllers
             string status,
             JsonElement? custom_data,
             List<TxnItem>? items,
-            string? customer_email,        // sometimes present
-            Customer? customer,            // sometimes present (email)
-            Details? details,              // contains line_items with price_id
-            string? customer_id            // useful for API fallback
+            string? customer_email,
+            Customer? customer,
+            Details? details,
+            string? customer_id
         );
 
         private sealed record Customer(string? email);
@@ -51,21 +55,24 @@ namespace VirtuPathAPI.Controllers
         private sealed record Details(List<LineItem>? line_items);
         private sealed record LineItem(string id, string price_id, int quantity);
 
-        // Custom data from client (if you pass it)
+        // Custom data we send from the client
         private sealed record CustomData(int? userId, string? email, List<CustomItem>? items);
         private sealed record CustomItem(int careerPathID, string plan, string billing, int quantity);
 
+        // Internal helper for provisioning
+        private sealed record PriceMappedItem(CustomItem Item, string? PriceId);
+
         // --------- Verb handlers to avoid 405s ----------
-        [HttpGet, AllowAnonymous] public IActionResult GetPing() => Ok(new { ok = true, route = "api/paddle/webhook" });
-        [HttpHead, AllowAnonymous] public IActionResult Head() => Ok();
-        [HttpOptions, AllowAnonymous]
+        [HttpGet,    AllowAnonymous] public IActionResult GetPing() => Ok(new { ok = true, route = "api/paddle/webhook" });
+        [HttpHead,   AllowAnonymous] public IActionResult Head()    => Ok();
+        [HttpOptions,AllowAnonymous]
         public IActionResult Options()
         {
             Response.Headers["Allow"] = "OPTIONS, GET, HEAD, POST";
             return NoContent();
         }
 
-        // --------------- Main webhook -------------------
+        // --------------- Webhook: transaction.completed -------------------
         [HttpPost]
         [AllowAnonymous]
         [Consumes("application/json")]
@@ -150,6 +157,63 @@ namespace VirtuPathAPI.Controllers
             }
 
             // 8) Persist subscriptions (idempotent) and unlock user
+            await ProvisionAndUnlockAsync(resolvedUserId.Value, txnId, itemsToProvision);
+
+            return Ok(new { ok = true });
+        }
+
+        // --------------- Confirm endpoint (used by Thank You page with ?_ptxn) -------------------
+        public sealed record ConfirmReq(string txnId);
+
+        [HttpPost("confirm")]
+        [AllowAnonymous]
+        [Consumes("application/json")]
+        public async Task<IActionResult> Confirm([FromBody] ConfirmReq req)
+        {
+            if (req is null || string.IsNullOrWhiteSpace(req.txnId))
+                return BadRequest(new { error = "txnId required" });
+
+            if (string.IsNullOrWhiteSpace(_paddleApiKey))
+                return StatusCode(501, new { error = "Server missing Paddle:ApiKey; cannot confirm." });
+
+            var tx = await FetchTransactionFromPaddleAsync(req.txnId);
+            if (tx is null)
+                return BadRequest(new { error = "Could not fetch transaction from Paddle." });
+
+            if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
+                return Ok(new { ok = false, status = tx.status });
+
+            // Parse custom_data
+            CustomData? cd = null;
+            if (tx.custom_data is JsonElement ce && ce.ValueKind != JsonValueKind.Null)
+            {
+                try
+                {
+                    cd = JsonSerializer.Deserialize<CustomData>(ce.GetRawText(),
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, "Confirm: custom_data parse failed");
+                }
+            }
+
+            var itemsToProvision = await BuildProvisioningItemsAsync(cd, tx);
+            if (itemsToProvision.Count == 0)
+                return Ok(new { ok = false, reason = "no_items" });
+
+            var resolvedUserId = await ResolveUserIdAsync(cd, tx);
+            if (resolvedUserId == null)
+                return Ok(new { ok = false, reason = "no_user" });
+
+            await ProvisionAndUnlockAsync(resolvedUserId.Value, tx.id, itemsToProvision);
+
+            return Ok(new { ok = true });
+        }
+
+        // ---------- Provision + unlock (shared by webhook & confirm) ----------
+        private async Task ProvisionAndUnlockAsync(int userId, string txnId, List<PriceMappedItem> itemsToProvision)
+        {
             foreach (var it in itemsToProvision)
             {
                 var priceId  = it.PriceId;
@@ -158,15 +222,15 @@ namespace VirtuPathAPI.Controllers
                 var billing  = it.Item.billing;
 
                 var exists = await _subs.UserSubscriptions.AnyAsync(s =>
-                    s.UserID == resolvedUserId &&
+                    s.UserID == userId &&
                     s.CareerPathID == careerId &&
                     s.PaddleTransactionId == txnId);
 
                 if (!exists)
                 {
-                    var sub = new UserSubscription
+                    _subs.UserSubscriptions.Add(new UserSubscription
                     {
-                        UserID              = resolvedUserId.Value,
+                        UserID              = userId,
                         CareerPathID        = careerId,
                         StartDate           = DateTime.UtcNow,
                         LastAccessedDay     = 0,
@@ -174,23 +238,20 @@ namespace VirtuPathAPI.Controllers
                         PaddlePriceId       = priceId,
                         PlanName            = plan,
                         Billing             = billing
-                        // EndDate computed in DB
-                    };
-
-                    _subs.UserSubscriptions.Add(sub);
+                    });
                     await _subs.SaveChangesAsync();
 
-                    _log.LogInformation("Paddle webhook: provisioned sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, bill={Billing})",
-                        resolvedUserId, careerId, txnId, priceId, plan, billing);
+                    _log.LogInformation("Provisioned sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, bill={Billing})",
+                        userId, careerId, txnId, priceId, plan, billing);
                 }
                 else
                 {
-                    _log.LogInformation("Paddle webhook: subscription already exists (user={UserId}, career={CareerId}, txn={Txn})",
-                        resolvedUserId, careerId, txnId);
+                    _log.LogInformation("Subscription already exists (user={UserId}, career={CareerId}, txn={Txn})",
+                        userId, careerId, txnId);
                 }
 
-                // Ensure the user is unlocked to this path
-                var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == resolvedUserId);
+                // Unlock the user
+                var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == userId);
                 if (user != null)
                 {
                     user.CareerPathID = careerId;
@@ -200,13 +261,9 @@ namespace VirtuPathAPI.Controllers
                     await _users.SaveChangesAsync();
                 }
             }
-
-            return Ok(new { ok = true });
         }
 
         // ---------- Build items to provision (custom_data preferred; else map price_id from DB) ----------
-        private sealed record PriceMappedItem(CustomItem Item, string? PriceId);
-
         private async Task<List<PriceMappedItem>> BuildProvisioningItemsAsync(CustomData? cd, Transaction data)
         {
             // 1) If custom_data.items provided, use that as source of truth
@@ -223,13 +280,13 @@ namespace VirtuPathAPI.Controllers
             }
 
             // 2) Otherwise derive from price_id → (careerPathID, plan, billing) using DB PriceMaps
-            var derived  = new List<PriceMappedItem>();
+            var derived   = new List<PriceMappedItem>();
             var purchased = CollectPriceIds(data);
             if (purchased.Count == 0) return derived;
 
             var ids = purchased.Select(p => p.priceId).ToList();
 
-            // NOTE: Make sure your PriceMap.PaddlePriceId values are stored with the same case as Paddle (usually lower-case).
+            // Ensure your UserSubscriptionContext has DbSet<PriceMap> PriceMaps
             var maps = await _subs.PriceMaps
                 .Where(pm => pm.Active && ids.Contains(pm.PaddlePriceId))
                 .ToListAsync();
@@ -239,7 +296,7 @@ namespace VirtuPathAPI.Controllers
                 var map = maps.FirstOrDefault(m => string.Equals(m.PaddlePriceId, pid, StringComparison.OrdinalIgnoreCase));
                 if (map == null)
                 {
-                    _log.LogWarning("Paddle webhook: no mapping configured for price_id {Pid}", pid);
+                    _log.LogWarning("No mapping configured for price_id {Pid}", pid);
                     continue;
                 }
 
@@ -262,8 +319,7 @@ namespace VirtuPathAPI.Controllers
                     if (!string.IsNullOrWhiteSpace(li.price_id))
                         list.Add((li.price_id, Math.Max(1, li.quantity)));
             }
-
-            // Fall back to items[].price.id (+ quantity if your TxnItem has it)
+            // Fall back to items[].price.id (+ quantity if provided)
             else if (data.items is { Count: > 0 })
             {
                 foreach (var it in data.items)
@@ -312,7 +368,7 @@ namespace VirtuPathAPI.Controllers
             {
                 using var http = new HttpClient { BaseAddress = new Uri("https://api.paddle.com/") };
                 http.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _paddleApiKey);
+                    new AuthenticationHeaderValue("Bearer", _paddleApiKey);
 
                 var resp = await http.GetAsync($"customers/{customerId}");
                 if (!resp.IsSuccessStatusCode)
@@ -365,6 +421,81 @@ namespace VirtuPathAPI.Controllers
             return CryptographicOperations.FixedTimeEquals(
                 Encoding.ASCII.GetBytes(hex),
                 Encoding.ASCII.GetBytes(h1));
+        }
+
+        // ---------- Paddle API: fetch transaction for /confirm ----------
+        private async Task<Transaction?> FetchTransactionFromPaddleAsync(string txnId)
+        {
+            if (string.IsNullOrWhiteSpace(txnId) || string.IsNullOrWhiteSpace(_paddleApiKey))
+                return null;
+
+            try
+            {
+                using var http = new HttpClient { BaseAddress = new Uri("https://api.paddle.com/") };
+                http.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", _paddleApiKey);
+
+                var resp = await http.GetAsync($"transactions/{txnId}");
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _log.LogWarning("Paddle API txn fetch failed {Txn} -> {Code}", txnId, (int)resp.StatusCode);
+                    return null;
+                }
+
+                using var s = await resp.Content.ReadAsStreamAsync();
+                using var doc = await JsonDocument.ParseAsync(s);
+
+                if (!doc.RootElement.TryGetProperty("data", out var d))
+                    return null;
+
+                string id     = d.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
+                string status = d.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "" : "";
+
+                JsonElement? customData = d.TryGetProperty("custom_data", out var cdEl) ? cdEl : (JsonElement?)null;
+
+                // Build items from details.line_items
+                List<TxnItem>? items = null;
+                if (d.TryGetProperty("details", out var details) &&
+                    details.TryGetProperty("line_items", out var lis) &&
+                    lis.ValueKind == JsonValueKind.Array)
+                {
+                    items = new List<TxnItem>();
+                    foreach (var li in lis.EnumerateArray())
+                    {
+                        var pid = li.TryGetProperty("price_id", out var pidEl) ? pidEl.GetString() ?? "" : "";
+                        var qty = li.TryGetProperty("quantity", out var qEl) && qEl.TryGetInt32(out var q) ? Math.Max(1, q) : 1;
+                        if (!string.IsNullOrWhiteSpace(pid))
+                            items.Add(new TxnItem(new TxnPrice(pid), qty));
+                    }
+                }
+
+                string? customerEmail = null;
+                if (d.TryGetProperty("customer_email", out var ce) && ce.ValueKind == JsonValueKind.String)
+                    customerEmail = ce.GetString();
+                if (string.IsNullOrWhiteSpace(customerEmail) &&
+                    d.TryGetProperty("customer", out var cust) &&
+                    cust.TryGetProperty("email", out var cem) &&
+                    cem.ValueKind == JsonValueKind.String)
+                    customerEmail = cem.GetString();
+
+                string? customerId = d.TryGetProperty("customer_id", out var cid) ? cid.GetString() : null;
+
+                return new Transaction(
+                    id: id,
+                    status: status,
+                    custom_data: customData,
+                    items: items,
+                    customer_email: customerEmail,
+                    customer: string.IsNullOrWhiteSpace(customerEmail) ? null : new Customer(customerEmail),
+                    details: null,
+                    customer_id: customerId
+                );
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "FetchTransactionFromPaddleAsync error {Txn}", txnId);
+                return null;
+            }
         }
     }
 }
