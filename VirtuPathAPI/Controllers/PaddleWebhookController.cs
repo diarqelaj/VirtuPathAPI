@@ -31,7 +31,7 @@ namespace VirtuPathAPI.Controllers
             _paddleApiKey = cfg["Paddle:ApiKey"]; // optional, only used if set
         }
 
-        // ---------- Payload models (aligned with the sample you posted) ----------
+        // ---------- Payload models (aligned with your sample) ----------
         private sealed record PaddleEvent(string event_id, string event_type, DateTime occurred_at, Transaction? data);
 
         private sealed record Transaction(
@@ -51,21 +51,14 @@ namespace VirtuPathAPI.Controllers
         private sealed record Details(List<LineItem>? line_items);
         private sealed record LineItem(string id, string price_id, int quantity);
 
-        // Your custom_data from Checkout (what we send client-side)
+        // Custom data from client (if you pass it)
         private sealed record CustomData(int? userId, string? email, List<CustomItem>? items);
         private sealed record CustomItem(int careerPathID, string plan, string billing, int quantity);
 
         // --------- Verb handlers to avoid 405s ----------
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult GetPing() => Ok(new { ok = true, route = "api/paddle/webhook" });
-
-        [HttpHead]
-        [AllowAnonymous]
-        public IActionResult Head() => Ok();
-
-        [HttpOptions]
-        [AllowAnonymous]
+        [HttpGet, AllowAnonymous] public IActionResult GetPing() => Ok(new { ok = true, route = "api/paddle/webhook" });
+        [HttpHead, AllowAnonymous] public IActionResult Head() => Ok();
+        [HttpOptions, AllowAnonymous]
         public IActionResult Options()
         {
             Response.Headers["Allow"] = "OPTIONS, GET, HEAD, POST";
@@ -139,8 +132,8 @@ namespace VirtuPathAPI.Controllers
                 }
             }
 
-            // 6) Build items to provision
-            var itemsToProvision = BuildProvisioningItems(cd, ev.data);
+            // 6) Build items to provision (custom_data preferred; else map price_id via DB)
+            var itemsToProvision = await BuildProvisioningItemsAsync(cd, ev.data);
             if (itemsToProvision.Count == 0)
             {
                 _log.LogWarning("Paddle webhook: no items to provision (no custom_data and no price_id mappings).");
@@ -159,8 +152,7 @@ namespace VirtuPathAPI.Controllers
             // 8) Persist subscriptions (idempotent) and unlock user
             foreach (var it in itemsToProvision)
             {
-                // store the price_id we matched (if any)
-                var priceId = it.PriceId;
+                var priceId  = it.PriceId;
                 var careerId = it.Item.careerPathID;
                 var plan     = it.Item.plan;
                 var billing  = it.Item.billing;
@@ -212,43 +204,48 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { ok = true });
         }
 
-        // ---------- Build items to provision (custom_data preferred; else map price_id) ----------
+        // ---------- Build items to provision (custom_data preferred; else map price_id from DB) ----------
         private sealed record PriceMappedItem(CustomItem Item, string? PriceId);
 
-        private List<PriceMappedItem> BuildProvisioningItems(CustomData? cd, Transaction data)
+        private async Task<List<PriceMappedItem>> BuildProvisioningItemsAsync(CustomData? cd, Transaction data)
         {
             // 1) If custom_data.items provided, use that as source of truth
             if (cd?.items is { Count: > 0 })
             {
                 var payloadPriceIds = CollectPriceIds(data);
                 var mapped = new List<PriceMappedItem>();
-
                 string? maybePriceId = payloadPriceIds.Count > 0 ? payloadPriceIds[0].priceId : null;
 
                 foreach (var item in cd.items)
-                {
                     mapped.Add(new PriceMappedItem(item, maybePriceId));
-                }
+
                 return mapped;
             }
 
-            // 2) Otherwise, derive from price_id → (careerPathID, plan, billing)
-            var derived = new List<PriceMappedItem>();
-            var priceIds = CollectPriceIds(data);
-            if (priceIds.Count == 0) return derived;
+            // 2) Otherwise derive from price_id → (careerPathID, plan, billing) using DB PriceMaps
+            var derived  = new List<PriceMappedItem>();
+            var purchased = CollectPriceIds(data);
+            if (purchased.Count == 0) return derived;
 
-            foreach (var (pid, qty) in priceIds)
+            var ids = purchased.Select(p => p.priceId).ToList();
+
+            // NOTE: Make sure your PriceMap.PaddlePriceId values are stored with the same case as Paddle (usually lower-case).
+            var maps = await _subs.PriceMaps
+                .Where(pm => pm.Active && ids.Contains(pm.PaddlePriceId))
+                .ToListAsync();
+
+            foreach (var (pid, qty) in purchased)
             {
-                if (TryMapPriceId(pid, out var map))
-                {
-                    derived.Add(new PriceMappedItem(
-                        new CustomItem(map.careerPathId, map.plan, map.billing, qty),
-                        pid));
-                }
-                else
+                var map = maps.FirstOrDefault(m => string.Equals(m.PaddlePriceId, pid, StringComparison.OrdinalIgnoreCase));
+                if (map == null)
                 {
                     _log.LogWarning("Paddle webhook: no mapping configured for price_id {Pid}", pid);
+                    continue;
                 }
+
+                derived.Add(new PriceMappedItem(
+                    new CustomItem(map.CareerPathID, map.PlanName, map.Billing, Math.Max(1, qty)),
+                    pid));
             }
 
             return derived;
@@ -258,12 +255,15 @@ namespace VirtuPathAPI.Controllers
         {
             var list = new List<(string, int)>();
 
+            // Prefer details.line_items if present (includes quantity)
             if (data.details?.line_items is { Count: > 0 })
             {
                 foreach (var li in data.details.line_items)
                     if (!string.IsNullOrWhiteSpace(li.price_id))
                         list.Add((li.price_id, Math.Max(1, li.quantity)));
             }
+
+            // Fall back to items[].price.id (+ quantity if your TxnItem has it)
             else if (data.items is { Count: > 0 })
             {
                 foreach (var it in data.items)
@@ -271,22 +271,12 @@ namespace VirtuPathAPI.Controllers
                         list.Add((it.price.id, Math.Max(1, it.quantity)));
             }
 
-            return list;
+            // Coalesce duplicates (same price multiple times)
+            return list
+                .GroupBy(x => x.Item1, StringComparer.OrdinalIgnoreCase)
+                .Select(g => (g.Key, g.Sum(x => x.Item2)))
+                .ToList();
         }
-
-        // ------- Map Paddle price_id to your app's product meta (replace with config/DB as needed) -------
-        // TODO: replace this dictionary with your own mapping source (config or database)
-        private static readonly Dictionary<string, (int careerPathId, string plan, string billing)> PriceMap =
-            new(StringComparer.OrdinalIgnoreCase)
-            {
-                // Example:
-                // { "pri_01gsz8x8sawmvhz1pv30nge1ke", (101, "pro",    "monthly") },
-                // { "pri_01h1vjfevh5etwq3rb416a23h2", (101, "addon", "monthly") },
-                // { "pri_01gsz98e27ak2tyhexptwc58yk", (101, "bonus",  "once")   },
-            };
-
-        private bool TryMapPriceId(string priceId, out (int careerPathId, string plan, string billing) map)
-            => PriceMap.TryGetValue(priceId, out map);
 
         // ---------- User resolution ----------
         private async Task<int?> ResolveUserIdAsync(CustomData? cd, Transaction data)
@@ -294,7 +284,7 @@ namespace VirtuPathAPI.Controllers
             // 1) userId in custom_data
             if (cd?.userId is int uid && uid > 0) return uid;
 
-            // 2) email in custom_data or event
+            // 2) email in custom_data or event or via Paddle API
             var email =
                 cd?.email?.Trim() ??
                 data.customer_email?.Trim() ??
@@ -334,7 +324,7 @@ namespace VirtuPathAPI.Controllers
                 using var s = await resp.Content.ReadAsStreamAsync();
                 using var doc = await JsonDocument.ParseAsync(s);
 
-                // Expecting { "data": { "email": "..." , ... } }
+                // Expecting { "data": { "email": "..." } }
                 if (doc.RootElement.TryGetProperty("data", out var data) &&
                     data.TryGetProperty("email", out var emailProp) &&
                     emailProp.ValueKind == JsonValueKind.String)
