@@ -35,6 +35,8 @@ builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs)
 builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
+
 // Add CommunityPostContext (new)
 builder.Services.AddDbContext<CommunityPostContext>(opt =>
     opt.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
