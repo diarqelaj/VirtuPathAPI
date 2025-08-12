@@ -590,30 +590,25 @@ namespace VirtuPathAPI.Controllers
         }
 
         [HttpPost("set-career")]
-        public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest request)
-        {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-            if (user == null) return NotFound("User not found.");
+public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest request)
+{
+    var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+    if (user == null) return NotFound("User not found.");
 
-            // ✅ Only update if day is not already set
-            if (user.CurrentDay == 0)
-            {
-                user.CareerPathID = request.CareerPathId;
-                user.CurrentDay = 1;
-                user.LastTaskDate = DateTime.UtcNow;
+    // Always set the career path. Only bump to day 1 if not started yet.
+    user.CareerPathID = request.CareerPathId;
+    if (user.CurrentDay <= 0) user.CurrentDay = 1;
+    user.LastTaskDate = DateTime.UtcNow;
 
-                var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-                if (ip == "::1") ip = "127.0.0.1";
-                user.LastKnownIP = ip;
+    var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+    if (ip == "::1") ip = "127.0.0.1";
+    user.LastKnownIP = ip;
+    user.LastActiveAt = DateTime.UtcNow;
 
-                        // Update “last active” timestamp on setting career path
-                user.LastActiveAt = DateTime.UtcNow;
+    await _context.SaveChangesAsync();
+    return Ok("Career path set.");
+}
 
-                await _context.SaveChangesAsync();
-            }
-
-            return Ok("Career path set.");
-        }
 
         // ✅ DELETE user (with cleanup of subscriptions)
         [HttpDelete("{id}")]
