@@ -8,7 +8,7 @@ namespace VirtuPathAPI.Models
         public UserSubscriptionContext(DbContextOptions<UserSubscriptionContext> options) : base(options) { }
 
         public DbSet<UserSubscription> UserSubscriptions { get; set; }
-         public DbSet<PriceMap>         PriceMaps         { get; set; } = default!;
+           public DbSet<PriceMap> PriceMaps { get; set; } = default!;
         public DbSet<User> Users { get; set; }
 
     }

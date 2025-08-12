@@ -41,18 +41,15 @@ namespace VirtuPathAPI.Controllers
 
             // ✅ Now also update the User's CareerPathID and progress
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserID == subscription.UserID);
-            // Better: do not regress progress.
-            if (user.CareerPathID != subscription.CareerPathID)
+            if (user != null)
             {
                 user.CareerPathID = subscription.CareerPathID;
-                if (user.CurrentDay <= 0) user.CurrentDay = 1;      // unlock day 1
+                if (user.CurrentDay <= 0) user.CurrentDay = 1;  // 👈 start them
+                user.LastTaskDate = null;
+                user.LastKnownIP  = HttpContext.Connection.RemoteIpAddress?.ToString();
+                await _context.SaveChangesAsync();
             }
 
-            // keep these consistent with how your webhook updates the user
-            user.LastTaskDate = DateTime.UtcNow;
-            user.LastActiveAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetUserSubscription), new { id = subscription.SubscriptionID }, subscription);
         }
