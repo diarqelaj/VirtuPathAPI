@@ -28,14 +28,22 @@ namespace VirtuPathAPI.Controllers
             _secret = cfg["Paddle:WebhookSecret"] ?? throw new InvalidOperationException("Missing Paddle:WebhookSecret");
         }
 
-        // Minimal Paddle payload shapes
+        // Minimal Paddle payload shapes (add customer_email & customer.email as fallbacks)
         private sealed record PaddleEvent(string event_id, string event_type, DateTime occurred_at, Transaction data);
-        private sealed record Transaction(string id, string status, JsonElement? custom_data, List<TxnItem>? items);
+        private sealed record Transaction(
+            string id,
+            string status,
+            JsonElement? custom_data,
+            List<TxnItem>? items,
+            string? customer_email,   // <-- fallback A
+            Customer? customer        // <-- fallback B
+        );
+        private sealed record Customer(string? email);
         private sealed record TxnItem(TxnPrice price);
         private sealed record TxnPrice(string id);
 
-        // Your custom_data shape from checkout
-        private sealed record CustomData(int userId, List<CustomItem> items);
+        // Your custom_data shape from checkout (add email)
+        private sealed record CustomData(int? userId, string? email, List<CustomItem> items);
         private sealed record CustomItem(int careerPathID, string plan, string billing, int quantity);
 
         [HttpPost]
@@ -51,7 +59,7 @@ namespace VirtuPathAPI.Controllers
             var sigHeader = Request.Headers["Paddle-Signature"].ToString();
             if (!VerifyPaddleSignature(sigHeader, raw, _secret))
             {
-                _log.LogWarning("Invalid Paddle signature");
+                _log.LogWarning("Paddle webhook: invalid signature");
                 return Unauthorized();
             }
 
@@ -66,7 +74,7 @@ namespace VirtuPathAPI.Controllers
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Failed to deserialize Paddle webhook");
+                _log.LogError(ex, "Paddle webhook: failed to deserialize payload");
                 return BadRequest();
             }
             if (ev is null) return BadRequest();
@@ -75,10 +83,11 @@ namespace VirtuPathAPI.Controllers
             if (!string.Equals(ev.event_type, "transaction.completed", StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(ev.data?.status, "completed", StringComparison.OrdinalIgnoreCase))
             {
-                return Ok(); // ack & ignore other events
+                _log.LogInformation("Paddle webhook: ignoring event {Type} with status {Status}", ev.event_type, ev.data?.status);
+                return Ok();
             }
 
-            // 5) Extract our custom_data (IMPORTANT: no .Value on JsonElement)
+            // 5) Extract our custom_data
             CustomData? cd = null;
             if (ev.data?.custom_data is JsonElement ce && ce.ValueKind != JsonValueKind.Null)
             {
@@ -89,26 +98,35 @@ namespace VirtuPathAPI.Controllers
                 }
                 catch (Exception ex)
                 {
-                    _log.LogError(ex, "custom_data parse failed");
+                    _log.LogError(ex, "Paddle webhook: custom_data parse failed");
                 }
             }
 
-            if (cd == null || cd.userId <= 0 || cd.items == null || cd.items.Count == 0)
+            // Resolve user by userId OR email
+            var resolvedUserId = await ResolveUserIdAsync(cd, ev.data);
+            if (resolvedUserId == null)
             {
-                _log.LogWarning("Missing/invalid custom_data; nothing to provision");
+                _log.LogWarning("Paddle webhook: could not resolve user (userId={UserId}, cd.email={CdEmail}, event.email={EvEmail})",
+                    cd?.userId, cd?.email, ev.data?.customer_email ?? ev.data?.customer?.email);
+                return Ok(); // ack but nothing to provision
+            }
+
+            if (cd?.items == null || cd.items.Count == 0)
+            {
+                _log.LogWarning("Paddle webhook: no items in custom_data for user {UserId}", resolvedUserId);
                 return Ok();
             }
 
             // Price for bookkeeping (if provided)
             var paddlePriceId = ev.data?.items?.FirstOrDefault()?.price?.id;
 
-            // 6) Provision each purchased career (idempotent by PaddleTransactionId)
+            // 6) Provision each purchased career (idempotent on transaction id)
             foreach (var item in cd.items)
             {
                 var careerId = item.careerPathID;
 
                 var exists = await _subs.UserSubscriptions.AnyAsync(s =>
-                    s.UserID == cd.userId &&
+                    s.UserID == resolvedUserId &&
                     s.CareerPathID == careerId &&
                     s.PaddleTransactionId == ev.data!.id);
 
@@ -116,23 +134,31 @@ namespace VirtuPathAPI.Controllers
                 {
                     var sub = new UserSubscription
                     {
-                        UserID = cd.userId,
+                        UserID = resolvedUserId.Value,
                         CareerPathID = careerId,
                         StartDate = DateTime.UtcNow,
                         LastAccessedDay = 0,
                         PaddleTransactionId = ev.data!.id,
                         PaddlePriceId = paddlePriceId,
-                        PlanName = item.plan,   // <- map JSON "plan" to DB column PlanName
-                        Billing  = item.billing // unchanged
+                        PlanName = item.plan,   // DB column is PlanName
+                        Billing  = item.billing
                         // EndDate is computed in DB
                     };
 
                     _subs.UserSubscriptions.Add(sub);
                     await _subs.SaveChangesAsync();
+
+                    _log.LogInformation("Paddle webhook: provisioned sub (user={UserId}, career={CareerId}, txn={Txn})",
+                        resolvedUserId, careerId, ev.data!.id);
+                }
+                else
+                {
+                    _log.LogInformation("Paddle webhook: subscription already exists (user={UserId}, career={CareerId}, txn={Txn})",
+                        resolvedUserId, careerId, ev.data!.id);
                 }
 
-                // Always ensure the user is unlocked to this path
-                var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == cd.userId);
+                // Ensure user is unlocked to this path
+                var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == resolvedUserId);
                 if (user != null)
                 {
                     user.CareerPathID = careerId;
@@ -146,9 +172,28 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { ok = true });
         }
 
+        private async Task<int?> ResolveUserIdAsync(CustomData? cd, Transaction? data)
+        {
+            if (cd?.userId is int uid && uid > 0) return uid;
+
+            string? email =
+                cd?.email?.Trim() ??
+                data?.customer_email?.Trim() ??
+                data?.customer?.email?.Trim();
+
+            if (string.IsNullOrEmpty(email)) return null;
+
+            email = email.ToLowerInvariant();
+            var user = await _users.Users
+                .Where(u => u.Email.ToLower() == email)
+                .Select(u => new { u.UserID })
+                .FirstOrDefaultAsync();
+
+            return user?.UserID;
+        }
+
         private static bool VerifyPaddleSignature(string header, string rawBody, string secret)
         {
-            // Header format: ts=...;h1=...
             if (string.IsNullOrWhiteSpace(header)) return false;
 
             string? ts = null, h1 = null;
