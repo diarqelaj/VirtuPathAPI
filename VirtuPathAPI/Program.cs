@@ -1,112 +1,68 @@
-﻿
-using Microsoft.EntityFrameworkCore;
+﻿// File: Program.cs
+
+using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using VirtuPathAPI.Models;
-using VirtuPathAPI.Hubs;
-using VirtuPathAPI.Data;
-using Microsoft.AspNetCore.SignalR;
-using VirtuPathAPI.Controllers;
 using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using dotenv.net;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using System.Security.Claims;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using VirtuPathAPI.Utilities; 
-using System.Security.Cryptography;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using CloudinaryDotNet.Actions;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
+using VirtuPathAPI.Controllers;
+using VirtuPathAPI.Data;
+using VirtuPathAPI.Hubs;
+using VirtuPathAPI.Models;
+using VirtuPathAPI.Utilities;
 
 var builder = WebApplication.CreateBuilder(args);
 
-//------------------------------------------------------------
-// 1) DATABASE CONTEXTS
-//------------------------------------------------------------
-string cs = builder.Configuration.GetConnectionString("VirtuPathDB");
+//────────────────────────────────────────────────────────────────────────────
+// 0) CONFIG / ENV / CORS
+//────────────────────────────────────────────────────────────────────────────
+DotEnv.Load(new DotEnvOptions(probeForEnv: true, ignoreExceptions: true));
+// If that still errors, just: DotEnv.Load();
 
-builder.Services.AddDbContext<DailyTaskContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<DailyQuoteContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<UserContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<UserSubscriptionContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
+builder.Configuration.AddEnvironmentVariables();
 
-// Add CommunityPostContext (new)
-builder.Services.AddDbContext<CommunityPostContext>(opt =>
-    opt.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
-
-
-// Your ChatContext
-builder.Services.AddDbContext<ChatContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
-
-//------------------------------------------------------------
-// 2) LOAD RSA KEYS FOR HYBRID ENCRYPTION
-//------------------------------------------------------------
-// 2.1) Register the server’s RSA public key as a JsonWebKey (JWK) for clients
-builder.Services.AddSingleton<JsonWebKey>(sp =>
+var apiBase = Environment.GetEnvironmentVariable("NEXT_PUBLIC_API_BASE_URL");
+string? apiOrigin = null;
+if (!string.IsNullOrWhiteSpace(apiBase))
 {
-    // Assumes you put rsa_public.pem in {ContentRoot}/Keys/
-    var publicPemPath = Path.Combine(builder.Environment.ContentRootPath, "Keys", "rsa_public.pem");
-    return RsaKeyLoader.GetRsaPublicJwk(publicPemPath);
-});
+    try { apiOrigin = new Uri(apiBase).GetLeftPart(UriPartial.Authority); }
+    catch { /* ignore parse errors */ }
+}
 
-builder.Services.AddSingleton<RSA>(sp =>
-{
-    using var scope = sp.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<ChatContext>();
-    var vault = db.ServerKeys.Single(k => k.UserId == 1);
-    var rsa = RSA.Create();
-    rsa.ImportFromPem(vault.EncPrivKeyPem);   // or vault.PubKeyPem, whichever is private
-    return rsa;
-});
+// Connection string: ENV first, then appsettings.json
+var cs = Environment.GetEnvironmentVariable("ConnectionStrings__VirtuPathDB")
+         ?? builder.Configuration.GetConnectionString("VirtuPathDB")
+         ?? throw new InvalidOperationException("Connection string 'VirtuPathDB' not found.");
 
+Console.WriteLine($"[DB] Using connection string length: {cs.Length}");
 
-//------------------------------------------------------------
-// 3) SIGNALR
-//------------------------------------------------------------
-builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
-builder.Services.AddHttpContextAccessor();
-builder.Services
-  .AddSignalR()
-  .AddJsonProtocol(options => {
-      options.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-      options.PayloadSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
-  });
-
-// Hook SignalR’s UserIdentifier to our session “UserID”
-builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
-
-//------------------------------------------------------------
-// 4) CLOUDINARY (unchanged)
-//------------------------------------------------------------
-DotEnv.Load(options: new DotEnvOptions(probeForEnv: true));
-var rawUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL")?.Trim();
-var cloudinary = new Cloudinary(rawUrl);
-cloudinary.Api.Secure = true;
-builder.Services.AddSingleton(cloudinary);
-
-//------------------------------------------------------------
-// 5) CORS POLICIES (unchanged)
-//------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", p =>
     {
-        p.WithOrigins(
+        var origins = new List<string>
+        {
             "https://virtu-path-ai.vercel.app",
-            "https://virtupathapi-54vt.onrender.com",
             "https://localhost:7072"
-        )
-        .AllowCredentials()
-        .AllowAnyHeader()
-        .AllowAnyMethod();
+        };
+        if (!string.IsNullOrEmpty(apiOrigin)) origins.Add(apiOrigin);
+
+        p.WithOrigins(origins.ToArray())
+         .AllowCredentials()
+         .AllowAnyHeader()
+         .AllowAnyMethod();
     });
 
     options.AddPolicy("AllowSwagger", p =>
@@ -115,25 +71,97 @@ builder.Services.AddCors(options =>
             "https://localhost:7072",
             "https://localhost:3000",
             "http://localhost:3000",
-            "http://localhost:5249"
+            "https://localhost:5249"
         )
+        .AllowCredentials()
         .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials();
+        .AllowAnyMethod();
     });
 });
 
-//------------------------------------------------------------
-// 6) SESSION + COOKIE POLICY
-//------------------------------------------------------------
-builder.Services.AddDbContext<DataProtectionKeyContext>(opts =>
-    opts.UseSqlServer(builder.Configuration.GetConnectionString("VirtuPathDB")));
+//────────────────────────────────────────────────────────────────────────────
+// 1) KESTREL / PORT
+//────────────────────────────────────────────────────────────────────────────
+var portStr = Environment.GetEnvironmentVariable("PORT");
+var port = string.IsNullOrWhiteSpace(portStr) ? 8080 : int.Parse(portStr);
+builder.WebHost.ConfigureKestrel(o => { o.ListenAnyIP(port); });
+
+//────────────────────────────────────────────────────────────────────────────
+// 2) DATABASE CONTEXTS
+//────────────────────────────────────────────────────────────────────────────
+builder.Services.AddDbContext<DailyTaskContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<DailyQuoteContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<UserContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<UserSubscriptionContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<CommunityPostContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContext<DataProtectionKeyContext>(opt => opt.UseSqlServer(cs));
+
+builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
+
+//────────────────────────────────────────────────────────────────────────────
+// 3) RSA KEYS & HYBRID ENCRYPTION
+//────────────────────────────────────────────────────────────────────────────
+builder.Services.AddSingleton<JsonWebKey>(sp =>
+{
+    var publicPemPath = Path.Combine(builder.Environment.ContentRootPath, "Keys", "rsa_public.pem");
+    return RsaKeyLoader.GetRsaPublicJwk(publicPemPath);
+});
+
+builder.Services.AddSingleton<RSA>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ChatContext>();
+    var vault = db.ServerKeys.SingleOrDefault(k => k.UserId == 1)
+                ?? throw new InvalidOperationException("ServerKeys row for UserId=1 not found.");
+
+    var rsa = RSA.Create();
+    rsa.ImportFromPem(vault.EncPrivKeyPem);
+    return rsa;
+});
+
+//────────────────────────────────────────────────────────────────────────────
+// 4) SIGNALR PRESENCE
+//────────────────────────────────────────────────────────────────────────────
+builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
+builder.Services.AddHttpContextAccessor();
+builder.Services
+    .AddSignalR()
+    .AddJsonProtocol(opts =>
+    {
+        opts.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        opts.PayloadSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+    });
+builder.Services.AddSingleton<IUserIdProvider, SessionUserIdProvider>();
+
+//────────────────────────────────────────────────────────────────────────────
+// 5) CLOUDINARY
+//────────────────────────────────────────────────────────────────────────────
+var rawUrl = Environment.GetEnvironmentVariable("CLOUDINARY_URL") ?? "";
+if (rawUrl.StartsWith("cloudinary://"))
+{
+    var cloud = new Cloudinary(rawUrl) { Api = { Secure = true } };
+    builder.Services.AddSingleton(cloud);
+}
+else
+{
+    Console.WriteLine("CLOUDINARY_URL missing or invalid – continuing without Cloudinary.");
+}
+
+//────────────────────────────────────────────────────────────────────────────
+// 6) SESSION & AUTHENTICATION
+//────────────────────────────────────────────────────────────────────────────
 builder.Services.AddDistributedMemoryCache();
 
 builder.Services
-  .AddDataProtection()
-  .SetApplicationName("VirtuPathAPI")               // must be stable across deployments
-  .PersistKeysToDbContext<DataProtectionKeyContext>();
+    .AddDataProtection()
+    .SetApplicationName("VirtuPathAPI")
+    .PersistKeysToDbContext<DataProtectionKeyContext>();
+
 builder.Services.AddSession(opt =>
 {
     opt.Cookie.Name = ".VirtuPath.Session";
@@ -144,64 +172,63 @@ builder.Services.AddSession(opt =>
     opt.IdleTimeout = TimeSpan.FromMinutes(360);
 });
 
-// ─── 6.1) COOKIE-BASED AUTHENTICATION & AUTHORIZATION ─────────────────
 builder.Services
-  .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-  .AddCookie(options =>
-  {
-      options.LoginPath = "/api/users/login";    // API will return 401, not a redirect
-      options.Cookie.Name = ".VirtuPath.Auth";
-      options.Cookie.HttpOnly = true;
-      options.Cookie.SameSite = SameSiteMode.None;
-      options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/api/users/login";
+        options.Cookie.Name = ".VirtuPath.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.None;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
-      // Return 401 instead of redirect when unauthorized
-      options.Events.OnRedirectToLogin = context =>
-      {
-          context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-          return Task.CompletedTask;
-      };
-      options.Events.OnRedirectToAccessDenied = context =>
-      {
-          context.Response.StatusCode = StatusCodes.Status403Forbidden;
-          return Task.CompletedTask;
-      };
-  });
+        options.Events.OnRedirectToLogin = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
 
-builder.Services.AddAuthorization(options =>
+builder.Services.AddAuthorization(opts =>
 {
-    // Example "Admin" policy
-    options.AddPolicy("Admin", policy =>
-        policy.RequireClaim(ClaimTypes.Role, "Admin"));
+    opts.AddPolicy("Admin", p => p.RequireClaim(ClaimTypes.Role, "Admin"));
 });
 
-//------------------------------------------------------------
-// 7) MVC / JSON / SWAGGER
-//------------------------------------------------------------
+//────────────────────────────────────────────────────────────────────────────
+// 7) MVC / SWAGGER
+//────────────────────────────────────────────────────────────────────────────
 builder.Services.AddControllers()
-    .AddJsonOptions(options =>
+    .AddJsonOptions(opts =>
     {
-        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        opts.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        opts.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        opts.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-//------------------------------------------------------------
-// 8) BUILD
-//------------------------------------------------------------
+//────────────────────────────────────────────────────────────────────────────
+// 8) BUILD APP & PIPELINE
+//────────────────────────────────────────────────────────────────────────────
 var app = builder.Build();
+
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
+app.UseStaticFiles();
+app.UseCookiePolicy();
+app.UseSession();
 
-//------------------------------------------------------------
-// 9) PIPELINE
-//------------------------------------------------------------
+app.UseRouting();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -213,35 +240,65 @@ else
     app.UseCors("AllowFrontend");
 }
 
-app.UseHttpsRedirection();
-app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.UseCookiePolicy();
-app.UseSession();
-
-// ✅ Remember-me Rehydration Middleware
+// Remember‑me rehydration
 app.Use(async (ctx, next) =>
 {
     const string rememberCookie = "VirtuPathRemember";
-
     if (ctx.Session.GetInt32("UserID") == null &&
         ctx.Request.Cookies.TryGetValue(rememberCookie, out var raw) &&
         int.TryParse(raw, out var uid))
     {
         ctx.Session.SetInt32("UserID", uid);
     }
-
     await next();
 });
 
-// ─── NEW: Enable authentication before authorization ───────────────────
-app.UseAuthentication();
-app.UseAuthorization();
+// Key‑vault seeding
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<UserContext>();
+        var dp = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
+        var protector = dp.CreateProtector("ratchet");
 
+        var toSeed = db.CobaltUserKeyVault
+                      .Where(v => string.IsNullOrEmpty(v.EncRatchetPrivKeyJson))
+                      .ToList();
 
+        foreach (var vault in toSeed)
+        {
+            var gen = new X25519KeyPairGenerator();
+            gen.Init(new X25519KeyGenerationParameters(new SecureRandom()));
+            var kp = gen.GenerateKeyPair();
+            var privParam = (X25519PrivateKeyParameters)kp.Private;
+            var pubParam = (X25519PublicKeyParameters)kp.Public;
+
+            var blob = JsonSerializer.Serialize(new
+            {
+                priv = Convert.ToBase64String(privParam.GetEncoded()),
+                pub = Convert.ToBase64String(pubParam.GetEncoded())
+            });
+
+            vault.EncRatchetPrivKeyJson = protector.Protect(blob);
+            vault.RotatedAt = DateTime.UtcNow;
+        }
+
+        if (toSeed.Any()) db.SaveChanges();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[KeyVaultSeed] Skipped due to error: {ex.Message}");
+    }
+}
+
+// Endpoints
+app.MapGet("/", () => Results.Ok("API is up"));
+app.MapGet("/health", () => Results.Ok("OK"));
 app.MapControllers();
-
-// …and wire up SignalR here:
-app.MapHub<ChatHub>("/chathub"); // ✅ SignalR endpoint
+app.MapHub<ChatHub>("/chathub");
 
 app.Run();
