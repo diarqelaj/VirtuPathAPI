@@ -16,6 +16,7 @@ namespace VirtuPathAPI.Controllers
         private readonly UserSubscriptionContext _subs;
         private readonly ILogger<PaddleWebhookController> _log;
         private readonly string _secret;
+        private readonly string? _paddleApiKey; // optional for customer email fallback
 
         public PaddleWebhookController(
             UserContext users,
@@ -24,26 +25,33 @@ namespace VirtuPathAPI.Controllers
             IConfiguration cfg)
         {
             _users = users;
-            _subs = subs;
-            _log = log;
+            _subs  = subs;
+            _log   = log;
             _secret = cfg["Paddle:WebhookSecret"] ?? throw new InvalidOperationException("Missing Paddle:WebhookSecret");
+            _paddleApiKey = cfg["Paddle:ApiKey"]; // optional, only used if set
         }
 
-        // ---- Paddle payload (minimal) ----
+        // ---------- Payload models (aligned with the sample you posted) ----------
         private sealed record PaddleEvent(string event_id, string event_type, DateTime occurred_at, Transaction? data);
+
         private sealed record Transaction(
             string id,
             string status,
             JsonElement? custom_data,
             List<TxnItem>? items,
-            string? customer_email,   // fallback A
-            Customer? customer        // fallback B
+            string? customer_email,        // sometimes present
+            Customer? customer,            // sometimes present (email)
+            Details? details,              // contains line_items with price_id
+            string? customer_id            // useful for API fallback
         );
-        private sealed record Customer(string? email);
-        private sealed record TxnItem(TxnPrice price);
-        private sealed record TxnPrice(string id);
 
-        // ---- Your custom_data (client) ----
+        private sealed record Customer(string? email);
+        private sealed record TxnItem(TxnPrice price, int quantity);
+        private sealed record TxnPrice(string id);
+        private sealed record Details(List<LineItem>? line_items);
+        private sealed record LineItem(string id, string price_id, int quantity);
+
+        // Your custom_data from Checkout (what we send client-side)
         private sealed record CustomData(int? userId, string? email, List<CustomItem>? items);
         private sealed record CustomItem(int careerPathID, string plan, string billing, int quantity);
 
@@ -74,9 +82,7 @@ namespace VirtuPathAPI.Controllers
             Request.EnableBuffering();
             string raw;
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true))
-            {
                 raw = await reader.ReadToEndAsync();
-            }
             Request.Body.Position = 0;
 
             // 2) Verify HMAC signature
@@ -101,7 +107,8 @@ namespace VirtuPathAPI.Controllers
                 _log.LogError(ex, "Paddle webhook: failed to deserialize payload");
                 return BadRequest();
             }
-            if (ev is null || ev.data is null)
+
+            if (ev?.data is null)
             {
                 _log.LogWarning("Paddle webhook: missing event data");
                 return BadRequest();
@@ -114,6 +121,8 @@ namespace VirtuPathAPI.Controllers
                 _log.LogInformation("Paddle webhook: ignoring event {Type} with status {Status}", ev.event_type, ev.data.status);
                 return Ok();
             }
+
+            var txnId = ev.data.id;
 
             // 5) Parse custom_data (if provided)
             CustomData? cd = null;
@@ -130,29 +139,31 @@ namespace VirtuPathAPI.Controllers
                 }
             }
 
-            // 6) Resolve user (by userId first, then email)
+            // 6) Build items to provision
+            var itemsToProvision = BuildProvisioningItems(cd, ev.data);
+            if (itemsToProvision.Count == 0)
+            {
+                _log.LogWarning("Paddle webhook: no items to provision (no custom_data and no price_id mappings).");
+                return Ok(); // ack but nothing to do
+            }
+
+            // 7) Resolve user (prefer custom_data, then event emails, then API customer lookup)
             var resolvedUserId = await ResolveUserIdAsync(cd, ev.data);
             if (resolvedUserId == null)
             {
-                _log.LogWarning("Paddle webhook: could not resolve user (userId={UserId}, cd.email={CdEmail}, event.email={EvEmail})",
-                    cd?.userId, cd?.email, ev.data.customer_email ?? ev.data.customer?.email);
+                _log.LogWarning("Paddle webhook: could not resolve user (userId={UserId}, cd.email={CdEmail}, event.email={EvEmail}, customer_id={Cust})",
+                    cd?.userId, cd?.email, ev.data.customer_email ?? ev.data.customer?.email, ev.data.customer_id);
                 return Ok(); // ack; nothing we can do
             }
 
-            // 7) Items to provision
-            if (cd?.items == null || cd.items.Count == 0)
+            // 8) Persist subscriptions (idempotent) and unlock user
+            foreach (var it in itemsToProvision)
             {
-                _log.LogWarning("Paddle webhook: no items in custom_data for user {UserId}", resolvedUserId);
-                return Ok();
-            }
-
-            var paddlePriceId = ev.data.items?.FirstOrDefault()?.price?.id;
-            var txnId = ev.data.id;
-
-            // 8) Provision each purchased career (idempotent on transaction id)
-            foreach (var item in cd.items)
-            {
-                var careerId = item.careerPathID;
+                // store the price_id we matched (if any)
+                var priceId = it.PriceId;
+                var careerId = it.Item.careerPathID;
+                var plan     = it.Item.plan;
+                var billing  = it.Item.billing;
 
                 var exists = await _subs.UserSubscriptions.AnyAsync(s =>
                     s.UserID == resolvedUserId &&
@@ -163,22 +174,22 @@ namespace VirtuPathAPI.Controllers
                 {
                     var sub = new UserSubscription
                     {
-                        UserID = resolvedUserId.Value,
-                        CareerPathID = careerId,
-                        StartDate = DateTime.UtcNow,
-                        LastAccessedDay = 0,
+                        UserID              = resolvedUserId.Value,
+                        CareerPathID        = careerId,
+                        StartDate           = DateTime.UtcNow,
+                        LastAccessedDay     = 0,
                         PaddleTransactionId = txnId,
-                        PaddlePriceId = paddlePriceId,
-                        PlanName = item.plan, // column is PlanName
-                        Billing  = item.billing
-                        // EndDate is computed in DB
+                        PaddlePriceId       = priceId,
+                        PlanName            = plan,
+                        Billing             = billing
+                        // EndDate computed in DB
                     };
 
                     _subs.UserSubscriptions.Add(sub);
                     await _subs.SaveChangesAsync();
 
-                    _log.LogInformation("Paddle webhook: provisioned sub (user={UserId}, career={CareerId}, txn={Txn})",
-                        resolvedUserId, careerId, txnId);
+                    _log.LogInformation("Paddle webhook: provisioned sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, bill={Billing})",
+                        resolvedUserId, careerId, txnId, priceId, plan, billing);
                 }
                 else
                 {
@@ -201,15 +212,94 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { ok = true });
         }
 
-        // ---------- helpers ----------
+        // ---------- Build items to provision (custom_data preferred; else map price_id) ----------
+        private sealed record PriceMappedItem(CustomItem Item, string? PriceId);
+
+        private List<PriceMappedItem> BuildProvisioningItems(CustomData? cd, Transaction data)
+        {
+            // 1) If custom_data.items provided, use that as source of truth
+            if (cd?.items is { Count: > 0 })
+            {
+                var payloadPriceIds = CollectPriceIds(data);
+                var mapped = new List<PriceMappedItem>();
+
+                string? maybePriceId = payloadPriceIds.Count > 0 ? payloadPriceIds[0].priceId : null;
+
+                foreach (var item in cd.items)
+                {
+                    mapped.Add(new PriceMappedItem(item, maybePriceId));
+                }
+                return mapped;
+            }
+
+            // 2) Otherwise, derive from price_id → (careerPathID, plan, billing)
+            var derived = new List<PriceMappedItem>();
+            var priceIds = CollectPriceIds(data);
+            if (priceIds.Count == 0) return derived;
+
+            foreach (var (pid, qty) in priceIds)
+            {
+                if (TryMapPriceId(pid, out var map))
+                {
+                    derived.Add(new PriceMappedItem(
+                        new CustomItem(map.careerPathId, map.plan, map.billing, qty),
+                        pid));
+                }
+                else
+                {
+                    _log.LogWarning("Paddle webhook: no mapping configured for price_id {Pid}", pid);
+                }
+            }
+
+            return derived;
+        }
+
+        private List<(string priceId, int qty)> CollectPriceIds(Transaction data)
+        {
+            var list = new List<(string, int)>();
+
+            if (data.details?.line_items is { Count: > 0 })
+            {
+                foreach (var li in data.details.line_items)
+                    if (!string.IsNullOrWhiteSpace(li.price_id))
+                        list.Add((li.price_id, Math.Max(1, li.quantity)));
+            }
+            else if (data.items is { Count: > 0 })
+            {
+                foreach (var it in data.items)
+                    if (!string.IsNullOrWhiteSpace(it.price?.id))
+                        list.Add((it.price.id, Math.Max(1, it.quantity)));
+            }
+
+            return list;
+        }
+
+        // ------- Map Paddle price_id to your app's product meta (replace with config/DB as needed) -------
+        // TODO: replace this dictionary with your own mapping source (config or database)
+        private static readonly Dictionary<string, (int careerPathId, string plan, string billing)> PriceMap =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                // Example:
+                // { "pri_01gsz8x8sawmvhz1pv30nge1ke", (101, "pro",    "monthly") },
+                // { "pri_01h1vjfevh5etwq3rb416a23h2", (101, "addon", "monthly") },
+                // { "pri_01gsz98e27ak2tyhexptwc58yk", (101, "bonus",  "once")   },
+            };
+
+        private bool TryMapPriceId(string priceId, out (int careerPathId, string plan, string billing) map)
+            => PriceMap.TryGetValue(priceId, out map);
+
+        // ---------- User resolution ----------
         private async Task<int?> ResolveUserIdAsync(CustomData? cd, Transaction data)
         {
+            // 1) userId in custom_data
             if (cd?.userId is int uid && uid > 0) return uid;
 
-            string? email =
+            // 2) email in custom_data or event
+            var email =
                 cd?.email?.Trim() ??
                 data.customer_email?.Trim() ??
-                data.customer?.email?.Trim();
+                data.customer?.email?.Trim() ??
+                await TryFetchCustomerEmailAsync(data.customer_id);
 
             if (string.IsNullOrWhiteSpace(email)) return null;
 
@@ -222,9 +312,50 @@ namespace VirtuPathAPI.Controllers
             return user?.UserID;
         }
 
+        // Optional: fetch email via Paddle API if we only have customer_id
+        private async Task<string?> TryFetchCustomerEmailAsync(string? customerId)
+        {
+            if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(_paddleApiKey))
+                return null;
+
+            try
+            {
+                using var http = new HttpClient { BaseAddress = new Uri("https://api.paddle.com/") };
+                http.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _paddleApiKey);
+
+                var resp = await http.GetAsync($"customers/{customerId}");
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _log.LogWarning("Paddle API: GET customers/{Id} failed: {Code}", customerId, (int)resp.StatusCode);
+                    return null;
+                }
+
+                using var s = await resp.Content.ReadAsStreamAsync();
+                using var doc = await JsonDocument.ParseAsync(s);
+
+                // Expecting { "data": { "email": "..." , ... } }
+                if (doc.RootElement.TryGetProperty("data", out var data) &&
+                    data.TryGetProperty("email", out var emailProp) &&
+                    emailProp.ValueKind == JsonValueKind.String)
+                {
+                    var email = emailProp.GetString();
+                    _log.LogInformation("Paddle API: resolved customer {Id} to email {Email}", customerId, email);
+                    return email;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Paddle API: error resolving customer {Id}", customerId);
+            }
+            return null;
+        }
+
+        // ---------- Signature verification ----------
         private static bool VerifyPaddleSignature(string header, string rawBody, string secret)
         {
-            if (string.IsNullOrWhiteSpace(header)) return false;
+            if (string.IsNullOrWhiteSpace(header) || string.IsNullOrWhiteSpace(secret))
+                return false;
 
             string? ts = null, h1 = null;
             foreach (var part in header.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -239,7 +370,7 @@ namespace VirtuPathAPI.Controllers
             var payload = $"{ts}:{rawBody}";
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
             var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
-            var hex = Convert.ToHexString(hash).ToLowerInvariant();
+            var hex  = Convert.ToHexString(hash).ToLowerInvariant();
 
             return CryptographicOperations.FixedTimeEquals(
                 Encoding.ASCII.GetBytes(hex),
