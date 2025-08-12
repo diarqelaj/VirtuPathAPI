@@ -216,6 +216,9 @@ builder.Services.AddSwaggerGen();
 //────────────────────────────────────────────────────────────────────────────
 // 8) BUILD APP & PIPELINE
 //────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// Pipeline
+// ────────────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
 app.UseForwardedHeaders(new ForwardedHeadersOptions
@@ -224,15 +227,20 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 });
 
 app.UseStaticFiles();
-app.UseCookiePolicy();
-app.UseSession();
 
+// Routing FIRST
 app.UseRouting();
 
+// Swagger (dev only)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+// CORS MUST be between UseRouting and auth/endpoints
+if (app.Environment.IsDevelopment())
+{
     app.UseCors("AllowSwagger");
 }
 else
@@ -240,10 +248,20 @@ else
     app.UseCors("AllowFrontend");
 }
 
+// Make cookies usable cross-site (Vercel -> API)
+app.UseCookiePolicy(new CookiePolicyOptions
+{
+    MinimumSameSitePolicy = SameSiteMode.None,
+    Secure = CookieSecurePolicy.Always
+});
+
+// Session BEFORE auth/endpoints
+app.UseSession();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Remember‑me rehydration
+// Remember-me rehydration (kept as-is)
 app.Use(async (ctx, next) =>
 {
     const string rememberCookie = "VirtuPathRemember";
@@ -256,7 +274,7 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-// Key‑vault seeding
+// Key-vault seeding (unchanged)
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -280,7 +298,7 @@ using (var scope = app.Services.CreateScope())
             var blob = JsonSerializer.Serialize(new
             {
                 priv = Convert.ToBase64String(privParam.GetEncoded()),
-                pub = Convert.ToBase64String(pubParam.GetEncoded())
+                pub  = Convert.ToBase64String(pubParam.GetEncoded())
             });
 
             vault.EncRatchetPrivKeyJson = protector.Protect(blob);
@@ -302,3 +320,4 @@ app.MapControllers();
 app.MapHub<ChatHub>("/chathub");
 
 app.Run();
+
