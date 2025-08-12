@@ -7,6 +7,10 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Webp;
 using System.Text.Json.Serialization;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
+using ImgSize = SixLabors.ImageSharp.Size;
+using SixLabors.ImageSharp.Formats.Webp;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -16,10 +20,12 @@ namespace VirtuPathAPI.Controllers
     {
         private readonly UserContext _context;
         private static readonly HashSet<string> BannedIPs = new();
+        private readonly Cloudinary _cloud;
 
-        public UsersController(UserContext context)
+        public UsersController(UserContext context, Cloudinary cloud)
         {
             _context = context;
+             _cloud   = cloud;
         }
 
         // Ban an IP address
@@ -279,157 +285,179 @@ namespace VirtuPathAPI.Controllers
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No file uploaded.");
-
-            // ✅ Limit file size to 5MB
             if (file.Length > 5 * 1024 * 1024)
                 return BadRequest("Image must be less than 5MB.");
 
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext = Path.GetExtension(file.FileName).ToLower();
-            if (!allowedExtensions.Contains(ext))
-                return BadRequest("Only .jpg, .jpeg, .png, and .webp image formats are allowed.");
+            var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var ext     = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowed.Contains(ext))
+                return BadRequest("Only .jpg, .jpeg, .png, .webp allowed.");
 
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound("User not found.");
-
-            // ✅ Delete old image if exists
-            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
-            {
-                var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.ProfilePictureUrl.TrimStart('/'));
-                if (System.IO.File.Exists(oldPath))
-                    System.IO.File.Delete(oldPath);
-            }
-
-            // ✅ Ensure folder exists
-            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "profile-pictures");
-            if (!Directory.Exists(uploadsFolder))
-                Directory.CreateDirectory(uploadsFolder);
-
-            // ✅ Convert + resize to .webp
-            var webpFileName = $"{Guid.NewGuid()}.webp";
-            var webpFilePath = Path.Combine(uploadsFolder, webpFileName);
-
-            using (var image = await Image.LoadAsync(file.OpenReadStream()))
-            {
-                image.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Mode = ResizeMode.Max,
-                    Size = new Size(512, 512)
-                }));
-
-                await image.SaveAsync(webpFilePath, new WebpEncoder { Quality = 85 });
-            }
-
-            // ✅ Update user with new image
-            var imageUrl = $"/profile-pictures/{webpFileName}";
-            user.ProfilePictureUrl = imageUrl;
-
-            _context.Users.Update(user);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { profilePictureUrl = imageUrl });
-        }
-
-        [HttpDelete("delete-profile-picture")]
-        public async Task<IActionResult> DeleteProfilePicture([FromQuery] int userId)
-        {
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound("User not found.");
 
-            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            if (!string.IsNullOrEmpty(user.ProfilePicturePublicId))
+                await _cloud.DestroyAsync(new DeletionParams(user.ProfilePicturePublicId));
+
+            Stream uploadStream;
+            string uploadFileName;
+
+            if (ext != ".webp")
             {
-                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.ProfilePictureUrl.TrimStart('/'));
-                if (System.IO.File.Exists(filePath))
+                // load + convert
+                await using var inStream = file.OpenReadStream();
+                using     var img      = Image.Load(inStream);
+                using     var ms       = new MemoryStream();
+                await     img.SaveAsync(ms, new WebpEncoder());
+                var bytes = ms.ToArray();
+
+                uploadStream   = new MemoryStream(bytes);
+                uploadFileName = Path.GetFileNameWithoutExtension(file.FileName) + ".webp";
+            }
+            else
+            {
+                uploadStream   = file.OpenReadStream();
+                uploadFileName = file.FileName;
+            }
+
+            var uploadParams = new ImageUploadParams
+            {
+                File           = new FileDescription(uploadFileName, uploadStream),
+                Folder         = "virtupath/users/profile",
+                Format         = "webp",
+                Transformation = new Transformation()
+                    .Width(512).Height(512).Crop("limit")
+                    .Quality("auto")
+            };
+
+            var result = await _cloud.UploadAsync(uploadParams);
+
+            // clean up our stream
+            uploadStream.Dispose();
+
+            if (result.StatusCode != System.Net.HttpStatusCode.OK)
+                return StatusCode(500, "Cloudinary upload failed.");
+
+            user.ProfilePictureUrl      = result.SecureUrl.ToString();
+            user.ProfilePicturePublicId = result.PublicId;
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                profilePictureUrl      = user.ProfilePictureUrl,
+                profilePicturePublicId = user.ProfilePicturePublicId
+            });
+        }
+
+
+            [HttpDelete("delete-profile-picture")]
+            public async Task<IActionResult> DeleteProfilePicture([FromQuery] int userId)
+            {
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null) return NotFound("User not found.");
+
+                if (!string.IsNullOrEmpty(user.ProfilePicturePublicId))
                 {
-                    System.IO.File.Delete(filePath);
+                    await _cloud.DestroyAsync(new DeletionParams(user.ProfilePicturePublicId));
+                    user.ProfilePicturePublicId = null;
                 }
+
                 user.ProfilePictureUrl = null;
                 _context.Users.Update(user);
                 await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Profile picture deleted." });
             }
 
-            return Ok(new { message = "Profile picture deleted." });
-        }
 
-        [HttpPost("upload-cover")]
+      [HttpPost("upload-cover")]
         public async Task<IActionResult> UploadCoverImage([FromForm] IFormFile file, [FromForm] int userId)
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No file uploaded.");
-
-            // ✅ Max 5MB check
             if (file.Length > 5 * 1024 * 1024)
                 return BadRequest("Image must be less than 5MB.");
 
-            // ✅ Validate allowed image formats
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext = Path.GetExtension(file.FileName).ToLower();
-            if (!allowedExtensions.Contains(ext))
-                return BadRequest("Only .jpg, .jpeg, .png, and .webp image formats are allowed.");
+            var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+            var ext     = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!allowed.Contains(ext))
+                return BadRequest("Only .jpg, .jpeg, .png, .webp allowed.");
 
             var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound("User not found.");
+            if (user == null) return NotFound("User not found.");
 
-            // ✅ Delete old cover image if it exists
-            if (!string.IsNullOrEmpty(user.CoverImageUrl))
+            if (!string.IsNullOrEmpty(user.CoverImagePublicId))
+                await _cloud.DestroyAsync(new DeletionParams(user.CoverImagePublicId));
+
+            Stream uploadStream;
+            string uploadFileName;
+
+            if (ext != ".webp")
             {
-                var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.CoverImageUrl.TrimStart('/'));
-                if (System.IO.File.Exists(oldPath))
-                    System.IO.File.Delete(oldPath);
+                await using var inStream = file.OpenReadStream();
+                using     var img      = Image.Load(inStream);
+                using     var ms       = new MemoryStream();
+                await     img.SaveAsync(ms, new WebpEncoder());
+                var bytes = ms.ToArray();
+
+                uploadStream   = new MemoryStream(bytes);
+                uploadFileName = Path.GetFileNameWithoutExtension(file.FileName) + ".webp";
+            }
+            else
+            {
+                uploadStream   = file.OpenReadStream();
+                uploadFileName = file.FileName;
             }
 
-            // ✅ Ensure folder exists
-            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "cover-images");
-            if (!Directory.Exists(uploadsFolder))
-                Directory.CreateDirectory(uploadsFolder);
-
-            // ✅ Convert to .webp and resize (1280x720 max)
-            var webpFileName = $"{Guid.NewGuid()}.webp";
-            var filePath = Path.Combine(uploadsFolder, webpFileName);
-
-            using (var image = await Image.LoadAsync(file.OpenReadStream()))
+            var uploadParams = new ImageUploadParams
             {
-                image.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Mode = ResizeMode.Max,
-                    Size = new Size(1280, 720)
-                }));
+                File           = new FileDescription(uploadFileName, uploadStream),
+                Folder         = "virtupath/users/cover",
+                Format         = "webp",
+                Transformation = new Transformation()
+                    .Width(1280).Height(720).Crop("limit")
+                    .Quality("auto")
+            };
 
-                await image.SaveAsync(filePath, new WebpEncoder { Quality = 85 });
-            }
+            var result = await _cloud.UploadAsync(uploadParams);
 
-            var imageUrl = $"/cover-images/{webpFileName}";
-            user.CoverImageUrl = imageUrl;
+            uploadStream.Dispose();
 
+            if (result.StatusCode != System.Net.HttpStatusCode.OK)
+                return StatusCode(500, "Cloudinary upload failed.");
+
+            user.CoverImageUrl      = result.SecureUrl.ToString();
+            user.CoverImagePublicId = result.PublicId;
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
-            return Ok(new { coverImageUrl = imageUrl });
+            return Ok(new
+            {
+                coverImageUrl      = user.CoverImageUrl,
+                coverImagePublicId = user.CoverImagePublicId
+            });
         }
 
-        [HttpDelete("delete-cover-image")]
+       [HttpDelete("delete-cover-image")]
         public async Task<IActionResult> DeleteCoverImage([FromQuery] int userId)
         {
             var user = await _context.Users.FindAsync(userId);
             if (user == null) return NotFound("User not found.");
 
-            if (!string.IsNullOrEmpty(user.CoverImageUrl))
+            if (!string.IsNullOrEmpty(user.CoverImagePublicId))
             {
-                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", user.CoverImageUrl.TrimStart('/'));
-                if (System.IO.File.Exists(filePath))
-                {
-                    System.IO.File.Delete(filePath);
-                }
-
-                user.CoverImageUrl = null;
-                _context.Users.Update(user);
-                await _context.SaveChangesAsync();
+                await _cloud.DestroyAsync(new DeletionParams(user.CoverImagePublicId));
+                user.CoverImagePublicId = null;
             }
+
+            user.CoverImageUrl = null;
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
 
             return Ok(new { message = "Cover image deleted." });
         }
+
 
         [HttpPost("bio")]
         public async Task<IActionResult> AddBio([FromBody] TextUpdateRequest req)
@@ -514,6 +542,21 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { message = $"Profile privacy {(req.IsPrivate ? "enabled" : "disabled")}.", isPrivate = user.IsProfilePrivate });
         }
+        [HttpPut("{id}/profile")]
+        public async Task<IActionResult> UpdateProfile(int id, [FromBody] UpdateProfileDto dto)
+        {
+            var u = await _context.Users.FindAsync(id);
+            if (u == null) return NotFound();
+
+            u.FullName         = dto.FullName;
+            u.Bio              = dto.Bio;
+            u.About            = dto.About;
+            u.IsProfilePrivate = dto.IsProfilePrivate;
+
+            await _context.SaveChangesAsync();
+            return Ok();
+        }
+
 
         [HttpGet("notifications/{id}")]
         public async Task<IActionResult> GetNotificationSettings(int id)
@@ -923,7 +966,7 @@ namespace VirtuPathAPI.Controllers
             public bool NewCareerPathAlerts { get; set; }
             public bool Promotions { get; set; }
         }
-
+        public record UpdateProfileDto(string FullName, string? Bio, string? About, bool IsProfilePrivate);
         public class SetCareerRequest
         {
             public string Email { get; set; }

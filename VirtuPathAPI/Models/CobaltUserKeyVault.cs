@@ -7,25 +7,28 @@ namespace VirtuPathAPI.Models
 {
     public class CobaltUserKeyVault
     {
-        // ── 1) Use UserId as *the* PK:
         [Key]
         [Column("UserId")]
         [ForeignKey(nameof(User))]
         public int UserId { get; set; }
 
-        // ── 2) Your payload columns ────────────────────────────────────────
+        // your existing fields
         [Required]
-        public string EncPrivKeyPem { get; set; } = null!;
+        public string EncPrivKeyPem   { get; set; } = null!;
 
         [Required]
-        public string PubKeyPem     { get; set; } = null!;
+        public string PubKeyPem       { get; set; } = null!;
 
-        // ── 3) Mirror your DB’s timestamps ────────────────────────────────
+        public string? X25519PublicJwk { get; set; }
+
+        // ← NEW: encrypted ratchet‐key blob
+        [Column(TypeName = "nvarchar(max)")]
+        public string? EncRatchetPrivKeyJson { get; set; }
+
         public DateTime CreatedAt   { get; set; }
         public DateTime? RotatedAt  { get; set; }
         public bool     IsActive    { get; set; } = true;
 
-        // ── 4) Navigation back to User ────────────────────────────────────
         public User User { get; set; } = null!;
     }
 }

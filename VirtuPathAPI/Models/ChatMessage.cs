@@ -5,27 +5,17 @@ namespace VirtuPathAPI.Models
 {
     public class ChatMessage
     {
-        public int Id         { get; set; }
-        public int SenderId   { get; set; }
-        public int ReceiverId { get; set; }
+                public int    Id         { get; set; }
+        public int    SenderId   { get; set; }
+        public int    ReceiverId { get; set; }
 
-        // ── ciphertext (mapped to computed ciphertextB64) ─────────────────
-        [Column("ciphertextB64")]
-        public string Message { get; set; } = null!;
+        // these names must match your DB columns exactly:
+        public string Message    { get; set; } = null!;
+        public string Iv         { get; set; } = null!;
+        public string Tag        { get; set; } = null!;
 
-        // ── IV (mapped to computed ivB64) ────────────────────────────────
-        [Column("ivB64")]
-        public string Iv      { get; set; } = null!;
 
-        // ── auth‐tag (mapped to computed tagB64) ─────────────────────────
-        [Column("tagB64")]
-        public string Tag     { get; set; } = null!;
 
-        // ── ratchet header (mapped to computed ratchetPubB64) ────────────
-        public string DhPubB64 { get; set; }
-
-        public int PN { get; set; }
-        public int N  { get; set; }
 
         // ── metadata ──────────────────────────────────────────────────────
         public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;

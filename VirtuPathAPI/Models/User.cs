@@ -103,6 +103,8 @@ namespace VirtuPathAPI.Models
         [JsonPropertyName("careerPath")]
         public CareerPath? CareerPath { get; set; }
 
+        [JsonPropertyName("x25519PublicJwk")]
+        public string? X25519PublicJwk { get; set; }   // NEW (nullable)
 
         // ─────────────────────────────────────────────────────────────────────
         // NEW: one‐to‐one link to the private‐key vault.

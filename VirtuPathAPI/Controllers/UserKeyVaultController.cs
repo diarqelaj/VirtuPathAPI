@@ -1,15 +1,18 @@
+// File: Controllers/UserKeyVaultController.cs
 using System;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using VirtuPathAPI.Models;
-using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
+using VirtuPathAPI.Models;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -18,132 +21,204 @@ namespace VirtuPathAPI.Controllers
     public class UserKeyVaultController : ControllerBase
     {
         private readonly UserContext    _db;
-        private readonly IDataProtector _dp;
+        private readonly IDataProtector _vaultProtector;
+        private readonly IDataProtector _ratchetProtector;
 
         public UserKeyVaultController(UserContext db, IDataProtectionProvider dp)
         {
-            _db = db;
-            // make sure your Program.cs has a persistent key ring and SetApplicationName(...)
-            _dp = dp.CreateProtector("keyvault");
+            _db               = db;
+            _vaultProtector   = dp.CreateProtector("keyvault"); // for RSA keys
+            _ratchetProtector = dp.CreateProtector("ratchet");  // for X25519 blob
         }
 
-        // ─── 1) “ME” – protected by cookie *or* by session fallback ─────────────
-        // GET api/user/vault/keys/me
-        // GET api/user/vault/keys/me
-[HttpGet("me")]
-public async Task<IActionResult> Mine()
-{
-    // 1) If the cookie auth didn't run, try the session:
-    if (!User.Identity!.IsAuthenticated)
-    {
-        var sid = HttpContext.Session.GetInt32("UserID");
-        if (sid.HasValue)
+        // ────────────────────────────────────────────────────────────
+        // 1) “ME” — GET your RSA info + encrypted ratchet‑blob
+        // ────────────────────────────────────────────────────────────
+        [HttpGet("me")]
+        public async Task<IActionResult> Mine()
         {
-            var claims   = new[] { new Claim("sub", sid.Value.ToString()) };
-            var identity = new ClaimsIdentity(
-                claims,
-                CookieAuthenticationDefaults.AuthenticationScheme
-            );
-            HttpContext.User = new ClaimsPrincipal(identity);
-        }
-    }
+            // restore auth from session cookie if needed
+            if (!User.Identity!.IsAuthenticated &&
+                HttpContext.Session.GetInt32("UserID") is int sid)
+            {
+                var claims = new[] { new Claim("sub", sid.ToString()) };
+                HttpContext.User = new ClaimsPrincipal(
+                    new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+            }
+            if (!User.Identity!.IsAuthenticated) return Unauthorized();
+            if (!int.TryParse(User.FindFirst("sub")?.Value, out var uid)) return Unauthorized();
 
-    // 2) Still not authed?
-    if (!User.Identity.IsAuthenticated)
-        return Unauthorized();
+            var vault = await _db.CobaltUserKeyVault.FindAsync(uid);
+            if (vault is null || !vault.IsActive) return NotFound();
 
-    // 3) Pull the user-ID from the "sub" claim
-    var sub = User.FindFirst("sub")?.Value;
-    if (!int.TryParse(sub, out var uid))
-        return Unauthorized();
-
-    // 4) Fetch the active vault row
-    var row = await _db.CobaltUserKeyVault.FindAsync(uid);
-    if (row == null || !row.IsActive)
-        return NotFound();
-
-    // 5) Fetch the user (for public JWK)
-    var user = await _db.Users.FindAsync(uid);
-    if (user == null || string.IsNullOrWhiteSpace(user.PublicKeyJwk))
-        return NotFound();
-
-    // 6) Parse the stored JWK
-    var jwkJson = JsonDocument.Parse(user.PublicKeyJwk).RootElement;
-
-    // 7) Try to decrypt the private PEM, but on any failure just return the raw string
-    string privatePem;
-    try
-    {
-        privatePem = _dp.Unprotect(row.EncPrivKeyPem);
-    }
-    catch (CryptographicException)
-    {
-        privatePem = row.EncPrivKeyPem;
-    }
-
-    // 8) Return both pieces
-    return Ok(new {
-        publicKeyJwk  = jwkJson,
-        privateKeyPem = privatePem
-    });
-}
-
-
-        // ─── 2) ADMIN “BY ID” ────────────────────────────────────────────────
-        // GET api/user/vault/keys/{id}
-        [HttpGet("{id:int}"), Microsoft.AspNetCore.Authorization.Authorize(Policy = "Admin")]
-        public async Task<IActionResult> ById(int id)
-        {
-            var row = await _db.CobaltUserKeyVault.FindAsync(id);
-            if (row == null || !row.IsActive)
+            var user = await _db.Users.FindAsync(uid);
+            if (user is null || string.IsNullOrWhiteSpace(user.PublicKeyJwk))
                 return NotFound();
 
-            var user = await _db.Users.FindAsync(id);
-            if (user == null || string.IsNullOrWhiteSpace(user.PublicKeyJwk))
-                return NotFound();
+            // — strip private fields from RSA JWK
+            var rsa = JsonNode.Parse(user.PublicKeyJwk)!.AsObject();
+            foreach (var f in new[] { "d", "p", "q", "dp", "dq", "qi" })
+                rsa.Remove(f);
+            rsa["ext"] = true; rsa["use"] = "enc"; rsa["alg"] = "RSA-OAEP-256";
 
-            var jwkJson = JsonDocument.Parse(user.PublicKeyJwk).RootElement;
-            string privatePem;
-            try
-            {
-                privatePem = _dp.Unprotect(row.EncPrivKeyPem);
-            }
-            catch (CryptographicException)
-            {
-                return StatusCode(500, new { error = "Unable to decrypt vault entry." });
-            }
+            // — X25519 public JWK?
+            JsonNode? x25519 = null;
+            if (!string.IsNullOrWhiteSpace(vault.X25519PublicJwk))
+                x25519 = JsonNode.Parse(vault.X25519PublicJwk);
+
+            // — decrypt the RSA private PEM
+            string privPem;
+            try    { privPem = _vaultProtector.Unprotect(vault.EncPrivKeyPem); }
+            catch  { privPem = vault.EncPrivKeyPem; }
 
             return Ok(new {
-                publicKeyJwk  = jwkJson,
-                privateKeyPem = privatePem
+                rsaOaepPublicJwk     = rsa,
+                x25519PublicJwk      = x25519,
+                privateKeyPem        = privPem,
+                encRatchetPrivKeyJson = vault.EncRatchetPrivKeyJson
             });
         }
 
-        // ─── 3) PUBLIC “ONLY PUBLIC KEY” ────────────────────────────────────
-       [HttpGet("public-key/{id:int}")]
-public async Task<IActionResult> PublicKey(int id)
-{
-    var row = await _db.CobaltUserKeyVault.FindAsync(id);
-    if (row == null || !row.IsActive) return NotFound();
+        // ────────────────────────────────────────────────────────────
+        // 2) ADMIN — same as /me but for *any* user‑ID
+        // ────────────────────────────────────────────────────────────
+        [HttpGet("{id:int}")]
+        [Authorize(Policy = "Admin")]
+        public async Task<IActionResult> ById(int id)
+        {
+            var vault = await _db.CobaltUserKeyVault.FindAsync(id);
+            if (vault is null || !vault.IsActive) return NotFound();
 
-    // Load RSA from the PEM you persisted
-    using var rsa = RSA.Create();
-    rsa.ImportFromPem(row.PubKeyPem);
+            var user = await _db.Users.FindAsync(id);
+            if (user is null || string.IsNullOrWhiteSpace(user.PublicKeyJwk))
+                return NotFound();
 
-    var p = rsa.ExportParameters(false);
-    string n = Base64UrlEncoder.Encode(p.Modulus);
-    string e = Base64UrlEncoder.Encode(p.Exponent);
+            var rsa = JsonNode.Parse(user.PublicKeyJwk)!.AsObject();
+            foreach (var f in new[] { "d", "p", "q", "dp", "dq", "qi" })
+                rsa.Remove(f);
+            rsa["ext"] = true; rsa["use"] = "enc"; rsa["alg"] = "RSA-OAEP-256";
 
-    // Return lower-case JSON exactly as JWK expects
-    var jwk = new {
-      kty = "RSA",
-      n,
-      e,
-      alg = "RSA-OAEP",
-      ext = true
-    };
+            JsonNode? x25519 = null;
+            if (!string.IsNullOrWhiteSpace(vault.X25519PublicJwk))
+                x25519 = JsonNode.Parse(vault.X25519PublicJwk);
 
-    return new JsonResult(new { publicKeyJwk = jwk });
-}
+            string privPem;
+            try    { privPem = _vaultProtector.Unprotect(vault.EncPrivKeyPem); }
+            catch  { return StatusCode(500, new { error = "Unable to decrypt RSA key." }); }
+
+            return Ok(new {
+                rsaOaepPublicJwk     = rsa,
+                x25519PublicJwk      = x25519,
+                privateKeyPem        = privPem,
+                encRatchetPrivKeyJson = vault.EncRatchetPrivKeyJson
+            });
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // 3) PUBLIC — RSA + X25519 *public* keys only
+        // ────────────────────────────────────────────────────────────
+        [HttpGet("public-key/{id:int}")]
+        public async Task<IActionResult> PublicKey(int id)
+        {
+            var vault = await _db.CobaltUserKeyVault.FindAsync(id);
+            if (vault is null || !vault.IsActive) return NotFound();
+
+            using var rsaAlg = RSA.Create();
+            rsaAlg.ImportFromPem(vault.PubKeyPem);
+            var p = rsaAlg.ExportParameters(false);
+
+            var rsaJwk = new JsonObject {
+                ["kty"] = "RSA",
+                ["n"]   = Base64UrlEncoder.Encode(p.Modulus),
+                ["e"]   = Base64UrlEncoder.Encode(p.Exponent),
+                ["alg"] = "RSA-OAEP",
+                ["ext"] = true
+            };
+
+            JsonNode? x25519 = null;
+            if (!string.IsNullOrWhiteSpace(vault.X25519PublicJwk))
+                x25519 = JsonNode.Parse(vault.X25519PublicJwk);
+
+            return Ok(new {
+                rsaOaepPublicJwk = rsaJwk,
+                x25519PublicJwk  = x25519
+            });
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // 4) GET your *own* encrypted X25519 ratchet‑key blob
+        // ────────────────────────────────────────────────────────────
+        [HttpGet("ratchet-private-key/me")]
+      
+        public async Task<IActionResult> GetMyRatchetKey()
+        {
+            // restore cookie auth
+            if (!User.Identity!.IsAuthenticated &&
+                HttpContext.Session.GetInt32("UserID") is int sid)
+            {
+                var cs = new[] { new Claim("sub", sid.ToString()) };
+                HttpContext.User = new ClaimsPrincipal(
+                    new ClaimsIdentity(cs, CookieAuthenticationDefaults.AuthenticationScheme));
+            }
+            if (!User.Identity!.IsAuthenticated) return Unauthorized();
+            if (!int.TryParse(User.FindFirst("sub")?.Value, out var meId))
+                return Unauthorized();
+
+            var vault = await _db.CobaltUserKeyVault.FindAsync(meId);
+            if (vault is null || !vault.IsActive) return NotFound();
+
+            if (string.IsNullOrWhiteSpace(vault.EncRatchetPrivKeyJson))
+                return NoContent();
+
+            string plaintext;
+            try    { plaintext = _ratchetProtector.Unprotect(vault.EncRatchetPrivKeyJson); }
+            catch  { return StatusCode(500, new { error = "Corrupted ratchet‑key blob" }); }
+
+            var doc = JsonSerializer.Deserialize<JsonElement>(plaintext)!;
+            return Ok(doc);
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // 5) POST your *encrypted* X25519 ratchet‑key blob
+        // ────────────────────────────────────────────────────────────
+        [HttpPost("ratchet-private-key/me")]
+  
+        public async Task<IActionResult> SetMyRatchetKey([FromBody] JsonElement blob)
+        {
+            if (!User.Identity!.IsAuthenticated ||
+                !int.TryParse(User.FindFirst("sub")?.Value, out var meId))
+                return Unauthorized();
+
+            var vault = await _db.CobaltUserKeyVault.FindAsync(meId);
+            if (vault is null)
+                return NotFound("You must have an RSA keypair first.");
+
+            vault.EncRatchetPrivKeyJson = _ratchetProtector.Protect(blob.GetRawText());
+            vault.RotatedAt            = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // 6) (Public) GET *any* user’s encrypted X25519 blob by ID
+        // ────────────────────────────────────────────────────────────
+        [HttpGet("ratchet-private-key/{id:int}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetRatchetKeyFor(int id)
+        {
+            var vault = await _db.CobaltUserKeyVault.FindAsync(id);
+            if (vault is null || !vault.IsActive) return NotFound();
+
+            if (string.IsNullOrWhiteSpace(vault.EncRatchetPrivKeyJson))
+                return NoContent();
+
+            string plaintext;
+            try    { plaintext = _ratchetProtector.Unprotect(vault.EncRatchetPrivKeyJson); }
+            catch  { plaintext = vault.EncRatchetPrivKeyJson; }
+
+            var doc = JsonSerializer.Deserialize<JsonElement>(plaintext)!;
+            return Ok(doc);
+        }
     }
 }

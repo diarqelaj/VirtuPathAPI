@@ -1,6 +1,10 @@
 {
   "Files": [
     {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
+      "PackagePath": "staticwebassets/cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp"
+    },
+    {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
       "PackagePath": "staticwebassets/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
     },
@@ -13,6 +17,10 @@
       "PackagePath": "staticwebassets/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg"
     },
     {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp",
+      "PackagePath": "staticwebassets/profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp"
+    },
+    {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
       "PackagePath": "staticwebassets/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
     },
@@ -23,6 +31,10 @@
     {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
       "PackagePath": "staticwebassets/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg"
+    },
+    {
+      "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/sso/login-status.html",
+      "PackagePath": "staticwebassets/sso/login-status.html"
     },
     {
       "Id": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",

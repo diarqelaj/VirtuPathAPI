@@ -1,19 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
 
-namespace VirtuPathAPI.Controllers;
-
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class UserBlockController : ControllerBase
 {
     private readonly ChatContext _context;
-
     public UserBlockController(ChatContext context)
-    {
-        _context = context;
-    }
+        => _context = context;
 
     private int? GetUserId() => HttpContext.Session.GetInt32("UserID");
 
@@ -22,13 +20,17 @@ public class UserBlockController : ControllerBase
     {
         var me = GetUserId();
         if (me == null) return Unauthorized();
+        if (blockedId == me) return BadRequest("Cannot block yourself");
 
-        var already = await _context.UserBlocks.AnyAsync(x => x.BlockerId == me && x.BlockedId == blockedId);
+        bool already = await _context.UserBlocks
+            .AnyAsync(x => x.BlockerId == me && x.BlockedId == blockedId);
         if (already) return BadRequest("Already blocked");
 
-        _context.UserBlocks.Add(new UserBlock { BlockerId = me.Value, BlockedId = blockedId });
+        _context.UserBlocks.Add(new UserBlock {
+            BlockerId = me.Value,
+            BlockedId = blockedId
+        });
         await _context.SaveChangesAsync();
-
         return Ok();
     }
 
@@ -38,17 +40,17 @@ public class UserBlockController : ControllerBase
         var me = GetUserId();
         if (me == null) return Unauthorized();
 
-        var block = await _context.UserBlocks.FirstOrDefaultAsync(x => x.BlockerId == me && x.BlockedId == blockedId);
+        var block = await _context.UserBlocks
+            .FindAsync(me.Value, blockedId);
         if (block == null) return NotFound();
 
         _context.UserBlocks.Remove(block);
         await _context.SaveChangesAsync();
-
         return Ok();
     }
 
     [HttpGet("blocked")]
-    public async Task<IActionResult> GetBlockedUsers()
+    public async Task<ActionResult<int[]>> GetBlockedUsers()
     {
         var me = GetUserId();
         if (me == null) return Unauthorized();
@@ -56,7 +58,7 @@ public class UserBlockController : ControllerBase
         var list = await _context.UserBlocks
             .Where(x => x.BlockerId == me)
             .Select(x => x.BlockedId)
-            .ToListAsync();
+            .ToArrayAsync();
 
         return Ok(list);
     }

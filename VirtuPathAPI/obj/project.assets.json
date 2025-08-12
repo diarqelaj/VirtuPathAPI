@@ -15,6 +15,19 @@
           }
         }
       },
+      "BouncyCastle.NetCore/2.2.1": {
+        "type": "package",
+        "compile": {
+          "lib/netstandard2.0/BouncyCastle.Crypto.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/BouncyCastle.Crypto.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "CloudinaryDotNet/1.27.5": {
         "type": "package",
         "dependencies": {
@@ -1301,7 +1314,7 @@
           }
         }
       },
-      "SixLabors.ImageSharp/3.1.8": {
+      "SixLabors.ImageSharp/3.1.10": {
         "type": "package",
         "compile": {
           "lib/net6.0/SixLabors.ImageSharp.dll": {
@@ -2436,6 +2449,21 @@
         "lib/netstandard2.1/BCrypt.Net-Next.dll",
         "lib/netstandard2.1/BCrypt.Net-Next.xml",
         "readme.md"
+      ]
+    },
+    "BouncyCastle.NetCore/2.2.1": {
+      "sha512": "yfWn8JYPc4rkeM2kcsCqFVFOvwCuuQvIieGtQWcjoWxOioeznXQB3M/GmHgbCWbJjc8ycrwGhZaZPiasifYi4A==",
+      "type": "package",
+      "path": "bouncycastle.netcore/2.2.1",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "bouncycastle.netcore.2.2.1.nupkg.sha512",
+        "bouncycastle.netcore.nuspec",
+        "lib/net45/BouncyCastle.Crypto.dll",
+        "lib/net45/BouncyCastle.Crypto.xml",
+        "lib/netstandard2.0/BouncyCastle.Crypto.dll",
+        "lib/netstandard2.0/BouncyCastle.Crypto.xml"
       ]
     },
     "CloudinaryDotNet/1.27.5": {
@@ -4051,10 +4079,10 @@
         "runtimes/ubuntu.16.10-x64/native/System.Security.Cryptography.Native.OpenSsl.so"
       ]
     },
-    "SixLabors.ImageSharp/3.1.8": {
-      "sha512": "8eJkROLGh6DBQLR666q2aOpAaean2puZaZ6Ur9YxoyGzjaZhv8OJSxtnDou54+OXMkXtLUdyQC0so47sOsqZjg==",
+    "SixLabors.ImageSharp/3.1.10": {
+      "sha512": "R1HEPcqx3v+kvlOTPouP0g/Nzzud9pHtjlgGbFax3Ivaz8kkaGfS2EPfyDGpmfoTUQ3nQ5wxdhYyYa9fwYA9cw==",
       "type": "package",
-      "path": "sixlabors.imagesharp/3.1.8",
+      "path": "sixlabors.imagesharp/3.1.10",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -4063,7 +4091,7 @@
         "lib/net6.0/SixLabors.ImageSharp.dll",
         "lib/net6.0/SixLabors.ImageSharp.xml",
         "sixlabors.imagesharp.128.png",
-        "sixlabors.imagesharp.3.1.8.nupkg.sha512",
+        "sixlabors.imagesharp.3.1.10.nupkg.sha512",
         "sixlabors.imagesharp.nuspec"
       ]
     },
@@ -6757,44 +6785,38 @@
   "projectFileDependencyGroups": {
     "net6.0": [
       "BCrypt.Net-Next >= 4.0.3",
+      "BouncyCastle.NetCore >= 2.2.1",
       "CloudinaryDotNet >= 1.27.5",
       "Microsoft.AspNetCore.Authentication.JwtBearer >= 6.0.12",
       "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore >= 6.0.3",
       "Microsoft.AspNetCore.SignalR >= 1.2.0",
       "Microsoft.EntityFrameworkCore.SqlServer >= 6.0.0",
       "Microsoft.EntityFrameworkCore.Tools >= 6.0.0",
-      "SixLabors.ImageSharp >= 3.1.8",
+      "SixLabors.ImageSharp >= 3.1.10",
       "Swashbuckle.AspNetCore >= 6.2.3",
       "dotenv.net >= 3.2.1"
     ]
   },
   "packageFolders": {
-    "C:\\Users\\taula\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "/home/pluto/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\VirtuPathAPI.csproj",
+      "projectUniqueName": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
       "projectName": "VirtuPathAPI",
-      "projectPath": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\VirtuPathAPI.csproj",
-      "packagesPath": "C:\\Users\\taula\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\taula\\OneDrive\\Documents\\GitHub\\VirtuPathApi\\VirtuPathAPI\\obj\\",
+      "projectPath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
+      "packagesPath": "/home/pluto/.nuget/packages/",
+      "outputPath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/obj/",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\taula\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "/home/pluto/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net6.0"
       ],
       "sources": {
-        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-        "C:\\Program Files\\dotnet\\library-packs": {},
+        "/usr/lib/dotnet/library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -6807,7 +6829,13 @@
         "warnAsError": [
           "NU1605"
         ]
-      }
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "9.0.100"
     },
     "frameworks": {
       "net6.0": {
@@ -6816,6 +6844,10 @@
           "BCrypt.Net-Next": {
             "target": "Package",
             "version": "[4.0.3, )"
+          },
+          "BouncyCastle.NetCore": {
+            "target": "Package",
+            "version": "[2.2.1, )"
           },
           "CloudinaryDotNet": {
             "target": "Package",
@@ -6845,7 +6877,7 @@
           },
           "SixLabors.ImageSharp": {
             "target": "Package",
-            "version": "[3.1.8, )"
+            "version": "[3.1.10, )"
           },
           "Swashbuckle.AspNetCore": {
             "target": "Package",
@@ -6867,6 +6899,20 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[6.0.36, 6.0.36]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Host.linux-x64",
+            "version": "[6.0.36, 6.0.36]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[6.0.36, 6.0.36]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.AspNetCore.App": {
             "privateAssets": "none"
@@ -6875,7 +6921,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\6.0.400\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/9.0.105/RuntimeIdentifierGraph.json"
       }
     }
   }
