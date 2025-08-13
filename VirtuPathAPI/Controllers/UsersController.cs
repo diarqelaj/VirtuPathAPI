@@ -69,19 +69,17 @@ namespace VirtuPathAPI.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            // ── Determine the IP we should check ─────────────────────────
             var ipToCheck = !string.IsNullOrEmpty(req.ClientPublicIp)
                             ? req.ClientPublicIp
                             : HttpContext.Connection.RemoteIpAddress?.ToString();
             if (ipToCheck == "::1") ipToCheck = "127.0.0.1";
 
-            // ── ENFORCE BAN ──────────────────────────────────────────────
+            // 🔎 log the inbound request
+            Console.WriteLine($"[LOGIN] id={req.Identifier} google={req.IsGoogleLogin} " +
+                            $"pwdSupplied={(!string.IsNullOrWhiteSpace(req.Password)).ToString().ToLower()} ip={ipToCheck}");
+
             if (BannedIPs.Contains(ipToCheck))
-            {
-                // 403 Forbidden
                 return Forbid($"Access denied from IP {ipToCheck}");
-            }
-            // ───────────────────────────────────────────────────────────────
 
             if (string.IsNullOrWhiteSpace(req.Identifier))
                 return BadRequest(new { error = "Email or username is required." });
@@ -91,36 +89,43 @@ namespace VirtuPathAPI.Controllers
                 u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
 
             if (user == null)
-                return Unauthorized(new { error = "User not found." });
-
-            // Password check...
-            if (!string.IsNullOrWhiteSpace(req.Password))
             {
-                if (string.IsNullOrEmpty(user.PasswordHash))
-                    return Unauthorized(new { error = "This account uses Google authentication." });
-                if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                    return Unauthorized(new { error = "Invalid password." });
+                Console.WriteLine("[LOGIN] user not found");
+                return Unauthorized(new { error = "User not found." });
+            }
+
+            // ✅ Password vs Google logic
+            if (req.IsGoogleLogin)
+            {
+                // Allow login regardless of PasswordHash (account may have set a password later)
+                Console.WriteLine("[LOGIN] proceeding via Google");
             }
             else
             {
-                if (!string.IsNullOrEmpty(user.PasswordHash))
+                if (string.IsNullOrWhiteSpace(req.Password))
+                {
+                    Console.WriteLine("[LOGIN] missing password on non-Google login");
                     return Unauthorized(new { error = "Password required for this account." });
+                }
+
+                if (string.IsNullOrEmpty(user.PasswordHash) ||
+                    !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+                {
+                    Console.WriteLine("[LOGIN] invalid password");
+                    return Unauthorized(new { error = "Invalid password." });
+                }
             }
 
-            // ── Persist the IP immediately ────────────────────────────────
+            // Persist IP + last active
             user.LastKnownIP = ipToCheck;
-            // ── Update “last active” timestamp ───────────────────────────
             user.LastActiveAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            // ───────────────────────────────────────────────────────────────
-
-            // 2FA?
-            if (user.IsTwoFactorEnabled)
+            if (user.IsTwoFactorEnabled && !req.IsGoogleLogin)
                 return Ok(new { requires2FA = true });
 
-            // Finalize login
             HttpContext.Session.SetInt32("UserID", user.UserID);
+
             if (req.RememberMe)
             {
                 Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
@@ -132,6 +137,7 @@ namespace VirtuPathAPI.Controllers
                 });
             }
 
+            Console.WriteLine("[LOGIN] success, issuing session cookie .VirtuPath.Session");
             return Ok(new
             {
                 userID = user.UserID,
