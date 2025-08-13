@@ -3,21 +3,21 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace VirtuPathAPI.Models
 {
-    [Table("PriceMaps")] // <- map to the plural table name in SQL
+    [Table("PriceMaps", Schema = "dbo")]   // ensure dbo.PriceMaps
     public class PriceMap
     {
         [Key]
-        [MaxLength(256)]                      // DB: nvarchar(256)
-        public string PaddlePriceId { get; set; } = default!; // pri_...
+        [MaxLength(256)]                   // matches your DB column
+        public string PaddlePriceId { get; set; } = default!;
 
         public int CareerPathID { get; set; }
 
-        [MaxLength(64)]                       // DB: nvarchar(64)
-        public string PlanName { get; set; } = "starter";     // starter | pro | bonus
+        [MaxLength(64)]
+        public string PlanName { get; set; } = "starter";
 
-        [MaxLength(64)]                       // DB: nvarchar(64)
-        public string Billing  { get; set; } = "monthly";     // monthly | yearly | once
+        [MaxLength(64)]
+        public string Billing  { get; set; } = "monthly";
 
-        public bool Active { get; set; } = true;              // DB default ((1))
+        public bool Active { get; set; } = true;
     }
 }
