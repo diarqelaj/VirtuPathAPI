@@ -55,6 +55,7 @@ builder.Services.AddCors(options =>
         var origins = new List<string>
         {
             "https://virtu-path-ai.vercel.app",
+            "https://www.virtupathai.com",
             "https://localhost:7072"
         };
         if (!string.IsNullOrEmpty(apiOrigin)) origins.Add(apiOrigin);
