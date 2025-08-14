@@ -110,6 +110,8 @@ namespace VirtuPathAPI.Models
         // NEW: one‐to‐one link to the private‐key vault.
         //      (It holds only the encrypted private‐PEM; PublicKeyJwk stays here.)
         //
-      public CobaltUserKeyVault? KeyVault { get; set; }
+        [JsonIgnore] // prevent cycles + never leak vault
+        
+        public CobaltUserKeyVault? KeyVault { get; set; }
     }
 }

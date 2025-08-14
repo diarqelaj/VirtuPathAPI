@@ -10,14 +10,12 @@ using System.Text.Json.Serialization;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using ImgSize = SixLabors.ImageSharp.Size;
-using SixLabors.ImageSharp.Formats.Webp;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
-using Microsoft.AspNetCore.DataProtection;
 namespace VirtuPathAPI.Controllers
 {
     [ApiController]
@@ -83,10 +81,7 @@ namespace VirtuPathAPI.Controllers
                             : HttpContext.Connection.RemoteIpAddress?.ToString();
             if (ipToCheck == "::1") ipToCheck = "127.0.0.1";
 
-            // 🔎 log the inbound request
-            Console.WriteLine($"[LOGIN] id={req.Identifier} google={req.IsGoogleLogin} " +
-                            $"pwdSupplied={(!string.IsNullOrWhiteSpace(req.Password)).ToString().ToLower()} ip={ipToCheck}");
-
+           
             if (BannedIPs.Contains(ipToCheck))
                 return Forbid($"Access denied from IP {ipToCheck}");
 
@@ -99,7 +94,7 @@ namespace VirtuPathAPI.Controllers
 
             if (user == null)
             {
-                Console.WriteLine("[LOGIN] user not found");
+             
                 return Unauthorized(new { error = "User not found." });
             }
 
@@ -107,20 +102,20 @@ namespace VirtuPathAPI.Controllers
             if (req.IsGoogleLogin)
             {
                 // Allow login regardless of PasswordHash (account may have set a password later)
-                Console.WriteLine("[LOGIN] proceeding via Google");
+            
             }
             else
             {
                 if (string.IsNullOrWhiteSpace(req.Password))
                 {
-                    Console.WriteLine("[LOGIN] missing password on non-Google login");
+                 
                     return Unauthorized(new { error = "Password required for this account." });
                 }
 
                 if (string.IsNullOrEmpty(user.PasswordHash) ||
                     !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
                 {
-                    Console.WriteLine("[LOGIN] invalid password");
+                
                     return Unauthorized(new { error = "Invalid password." });
                 }
             }
@@ -146,8 +141,9 @@ namespace VirtuPathAPI.Controllers
                     Expires = DateTimeOffset.UtcNow.AddMonths(1),
                 });
             }
+          
 
-            Console.WriteLine("[LOGIN] success, issuing session cookie .VirtuPath.Session");
+
             return Ok(new
             {
                 userID = user.UserID,
@@ -175,65 +171,92 @@ namespace VirtuPathAPI.Controllers
         };
 
        [HttpPost]
-        public async Task<IActionResult> CreateUser([FromBody] User user)
-        {
-            // 1) Requireds
-            if (string.IsNullOrWhiteSpace(user.Email) ||
-                string.IsNullOrWhiteSpace(user.PasswordHash) ||
-                string.IsNullOrWhiteSpace(user.Username))
-            {
-                return BadRequest(new { error = "Email, password, and username are required." });
-            }
+public async Task<IActionResult> CreateUser([FromBody] User incoming)
+{
+    if (incoming is null)
+        return BadRequest(new { error = "Missing request body." });
 
-            // 2) Normalize username (lowercase, trimmed)
-            user.Username = user.Username.Trim().ToLower();
+    // 1) Requireds
+    var username = incoming.Username?.Trim().ToLower();
+    var emailNorm = incoming.Email?.Trim().ToLower();
 
-            // 3) Reserved/profanity/format
-            if (ReservedUsernames.Contains(user.Username))
-                return BadRequest(new { error = "This username is reserved. Please choose another." });
+    if (string.IsNullOrWhiteSpace(emailNorm) ||
+        string.IsNullOrWhiteSpace(incoming.PasswordHash) ||
+        string.IsNullOrWhiteSpace(username))
+    {
+        return BadRequest(new { error = "Email, password, and username are required." });
+    }
 
-            foreach (var word in ProfanityList.Words)
-                if (user.Username.Contains(word))
-                    return BadRequest(new { error = "Username contains inappropriate content." });
+    // 2) Reserved / profanity / format
+    if (ReservedUsernames.Contains(username))
+        return BadRequest(new { error = "This username is reserved. Please choose another." });
 
-            if (!Regex.IsMatch(user.Username, @"^[a-z0-9_]{3,20}$"))
-                return BadRequest(new { error = "Username must be 3–20 chars, lowercase letters/numbers/underscores." });
+    foreach (var word in ProfanityList.Words)
+        if (username.Contains(word))
+            return BadRequest(new { error = "Username contains inappropriate content." });
 
-            // 4) Uniqueness (case-insensitive)
-            var emailNorm = user.Email.Trim().ToLower();
-            if (await _context.Users.AnyAsync(u => u.Username == user.Username))
-                return Conflict(new { error = "Username already taken" });
-            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailNorm))
-                return Conflict(new { error = "Email already in use" });
+    if (!Regex.IsMatch(username, @"^[a-z0-9_]{3,20}$"))
+        return BadRequest(new { error = "Username must be 3–20 chars, lowercase letters/numbers/underscores." });
 
-            // 5) Hash password + timestamps
-            user.Email = emailNorm;
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
-            user.RegistrationDate = DateTime.UtcNow;
+    // 3) Uniqueness
+    if (await _context.Users.AnyAsync(u => u.Username == username))
+        return Conflict(new { error = "Username already taken" });
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+    if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailNorm))
+        return Conflict(new { error = "Email already in use" });
 
-            // 6) Best-effort crypto init (do not fail signup if this throws)
-            try
-            {
-                await EnsureUserCryptoAsync(user, allowServerPrivate: true);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[CreateUser] key init failed for user {user.UserID}: {ex.Message}");
-                // do not return error; signup already succeeded
-            }
+    // 4) Build a fresh entity (never reuse the bound object)
+    var user = new User
+    {
+        UserID             = 0, // guard against explicit ID in payload
+        FullName           = incoming.FullName,
+        Username           = username,
+        Email              = emailNorm,
+        PasswordHash       = BCrypt.Net.BCrypt.HashPassword(incoming.PasswordHash),
+        RegistrationDate   = DateTime.UtcNow,
 
-            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, new
-            {
-                user.UserID,
-                user.Username,
-                user.FullName,
-                user.Email,
-                user.RegistrationDate
-            });
-        }
+        // optional prefs from client (defaults are false in the model)
+        ProductUpdates       = incoming.ProductUpdates,
+        CareerTips           = incoming.CareerTips,
+        NewCareerPathAlerts  = incoming.NewCareerPathAlerts,
+        Promotions           = incoming.Promotions,
+        IsProfilePrivate     = incoming.IsProfilePrivate,
+
+        // safe defaults
+        IsVerified         = false,
+        IsOfficial         = false,
+        IsTwoFactorEnabled = false,
+        CurrentDay         = 0,
+
+        // clear server-managed fields
+        Bio                    = null,
+        About                  = null,
+        ProfilePictureUrl      = null,
+        ProfilePicturePublicId = null,
+        CoverImageUrl          = null,
+        CoverImagePublicId     = null,
+        PublicKeyJwk           = null,
+        X25519PublicJwk        = null,
+        KeyVault               = null, // IMPORTANT: avoid EF trying to insert principal twice
+    };
+
+    // 5) Save once to get identity
+    _context.Users.Add(user);
+    await _context.SaveChangesAsync();   // user.UserID is now set
+
+    // 6) Best-effort crypto init; don't fail signup if it throws
+    try
+    {
+        await EnsureUserCryptoAsync(user, allowServerPrivate: true);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CreateUser] key provision failed for user {user.UserID}: {ex.Message}");
+        // Signup already succeeded; continue without blocking the response
+    }
+
+    return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
+}
 
 
         [HttpGet("by-username/{username}")]
@@ -1021,80 +1044,58 @@ string ProtectToB64(string plaintext)
             await _context.SaveChangesAsync();
             return NoContent();
         }
-        private async Task EnsureUserCryptoAsync(User u, bool allowServerPrivate = true)
+      private async Task EnsureUserCryptoAsync(User u, bool allowServerPrivate = true)
 {
-    await _context.Entry(u).Reference(x => x.KeyVault).LoadAsync();
+    if (_context.Entry(u).State == EntityState.Detached)
+    {
+        var tracked = await _context.Users.FindAsync(u.UserID);
+        if (tracked != null) u = tracked; else _context.Attach(u);
+    }
 
-    bool userDirty = false;
-    bool vaultDirty = false;
+    var vault = await _context.CobaltUserKeyVaults
+        .SingleOrDefaultAsync(v => v.UserId == u.UserID);
 
-    var vault = u.KeyVault;
+    bool userChanged  = false;
+    bool vaultChanged = false;
 
-    // 1) RSA keys
-    if (string.IsNullOrEmpty(u.PublicKeyJwk) || (allowServerPrivate && (vault == null || string.IsNullOrEmpty(vault.PubKeyPem) || string.IsNullOrEmpty(vault.EncPrivKeyPem))))
+    if (string.IsNullOrEmpty(u.PublicKeyJwk))
     {
         using var rsa = RSA.Create(2048);
-
-        // Always (re)fill PUBLIC JWK on the user if missing
-        if (string.IsNullOrEmpty(u.PublicKeyJwk))
-        {
-            u.PublicKeyJwk = BuildRsaPublicJwk(rsa);
-            userDirty = true;
-        }
+        u.PublicKeyJwk = BuildRsaPublicJwk(rsa);
+        userChanged = true;
 
         if (allowServerPrivate)
         {
-            var publicPem  = ExportRsaPublicPem(rsa);
-            var privatePem = ExportRsaPrivatePkcs8Pem(rsa);
-            var encPrivB64 = ProtectToB64(privatePem);
+            var pubPem  = ExportRsaPublicPem(rsa);
+            var privPem = ExportRsaPrivatePkcs8Pem(rsa);
+            var encPriv = ProtectToB64(privPem);
 
             if (vault == null)
             {
                 vault = new CobaltUserKeyVault
                 {
-                    UserId         = u.UserID,
-                    PubKeyPem      = publicPem,
-                    EncPrivKeyPem  = encPrivB64,
-                    CreatedAt      = DateTime.UtcNow,
-                    IsActive       = true
+                    UserId        = u.UserID,
+                    PubKeyPem     = pubPem,
+                    EncPrivKeyPem = encPriv,
+                    CreatedAt     = DateTime.UtcNow,
+                    IsActive      = true
                 };
-                _context.Add(vault);
-                u.KeyVault = vault; // attach for tracking
+                _context.CobaltUserKeyVaults.Add(vault);
+                vaultChanged = true;
             }
             else
             {
-                // Only fill missing pieces—don't rotate silently
-                if (string.IsNullOrEmpty(vault.PubKeyPem))     vault.PubKeyPem     = publicPem;
-                if (string.IsNullOrEmpty(vault.EncPrivKeyPem)) vault.EncPrivKeyPem = encPrivB64;
-                _context.Update(vault);
+                if (string.IsNullOrEmpty(vault.PubKeyPem))     { vault.PubKeyPem = pubPem;     vaultChanged = true; }
+                if (string.IsNullOrEmpty(vault.EncPrivKeyPem)) { vault.EncPrivKeyPem = encPriv; vaultChanged = true; }
             }
-            vaultDirty = true;
         }
     }
 
-    // 2) X25519 (public). Prefer client-supplied; otherwise backfill.
-    if (string.IsNullOrEmpty(u.X25519PublicJwk))
-    {
-        var (pubJwk, _priv) = GenerateX25519Pair();
-        u.X25519PublicJwk = pubJwk;
-        userDirty = true;
-
-        // mirror into vault if you want centralized read (optional)
-        if (vault != null && string.IsNullOrEmpty(vault.X25519PublicJwk))
-        {
-            vault.X25519PublicJwk = pubJwk;
-            _context.Update(vault);
-            vaultDirty = true;
-        }
-    }
-
-    // NOTE: EncRatchetPrivKeyJson should be set when your client posts its ratchet private key.
-    // We do NOT generate or store it here.
-
-    if (userDirty)  _context.Users.Update(u);
-    if (userDirty || vaultDirty)
+    if (userChanged || vaultChanged)
         await _context.SaveChangesAsync();
 }
+
+
         public class LoginRequest
         {
             public string Identifier { get; set; } // email or username

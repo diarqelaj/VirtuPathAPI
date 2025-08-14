@@ -48,7 +48,7 @@ namespace VirtuPathAPI.Models
                 b.Property(v => v.EncRatchetPrivKeyJson); // nvarchar(max) via model attribute is fine
             });
 
-            modelBuilder.Entity<User>()
+               modelBuilder.Entity<User>()
                 .HasOne(u => u.KeyVault)
                 .WithOne(v => v.User)
                 .HasForeignKey<CobaltUserKeyVault>(v => v.UserId)
