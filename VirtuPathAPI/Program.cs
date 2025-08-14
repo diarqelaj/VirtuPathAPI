@@ -103,6 +103,7 @@ builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<DataProtectionKeyContext>(opt => opt.UseSqlServer(cs));
 
 builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDataProtection();
 
 //────────────────────────────────────────────────────────────────────────────
 // 3) RSA KEYS & HYBRID ENCRYPTION
@@ -279,7 +280,6 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-// Key-vault seeding (unchanged)
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -288,19 +288,26 @@ using (var scope = app.Services.CreateScope())
         var dp = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
         var protector = dp.CreateProtector("ratchet");
 
-        var toSeed = db.CobaltUserKeyVault
-                      .Where(v => string.IsNullOrEmpty(v.EncRatchetPrivKeyJson))
-                      .ToList();
+        var vaults = db.Set<CobaltUserKeyVault>(); // <— no DbSet property needed
+
+        var toSeed = vaults
+            .Where(v => string.IsNullOrEmpty(v.EncRatchetPrivKeyJson))
+            .ToList();
 
         foreach (var vault in toSeed)
         {
+            // Generate X25519 keypair
             var gen = new X25519KeyPairGenerator();
-            gen.Init(new X25519KeyGenerationParameters(new SecureRandom()));
-            var kp = gen.GenerateKeyPair();
-            var privParam = (X25519PrivateKeyParameters)kp.Private;
-            var pubParam = (X25519PublicKeyParameters)kp.Public;
+            // If your BC version has X25519KeyGenerationParameters, use it:
+            // gen.Init(new X25519KeyGenerationParameters(new SecureRandom()));
+            // Otherwise use generic KeyGenerationParameters (works with many versions):
+            gen.Init(new Org.BouncyCastle.Crypto.KeyGenerationParameters(new SecureRandom(), 255));
 
-            var blob = JsonSerializer.Serialize(new
+            var kp        = gen.GenerateKeyPair();
+            var privParam = (X25519PrivateKeyParameters)kp.Private;
+            var pubParam  = (X25519PublicKeyParameters)kp.Public;
+
+            var blob = System.Text.Json.JsonSerializer.Serialize(new
             {
                 priv = Convert.ToBase64String(privParam.GetEncoded()),
                 pub  = Convert.ToBase64String(pubParam.GetEncoded())
@@ -310,7 +317,8 @@ using (var scope = app.Services.CreateScope())
             vault.RotatedAt = DateTime.UtcNow;
         }
 
-        if (toSeed.Any()) db.SaveChanges();
+        if (toSeed.Count > 0)
+            db.SaveChanges();
     }
     catch (Exception ex)
     {

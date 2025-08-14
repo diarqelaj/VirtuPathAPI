@@ -11,22 +11,31 @@ using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using ImgSize = SixLabors.ImageSharp.Size;
 using SixLabors.ImageSharp.Formats.Webp;
-
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.DataProtection;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
+using Microsoft.AspNetCore.DataProtection;
 namespace VirtuPathAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class UsersController : ControllerBase
-    {
-        private readonly UserContext _context;
-        private static readonly HashSet<string> BannedIPs = new();
-        private readonly Cloudinary _cloud;
+   public class UsersController : ControllerBase
+{
+    private readonly UserContext _context;
+    private static readonly HashSet<string> BannedIPs = new();
+    private readonly IDataProtector _protector;
+    private readonly Cloudinary _cloud;
 
-        public UsersController(UserContext context, Cloudinary cloud)
-        {
-            _context = context;
-             _cloud   = cloud;
-        }
+    // ⬇️ inject IDataProtectionProvider and use it
+    public UsersController(UserContext context, Cloudinary cloud, IDataProtectionProvider dataProtection)
+    {
+        _context = context;
+        _cloud   = cloud;
+        _protector = dataProtection.CreateProtector("VirtuPath.Keys.UserPrivate.v1");
+    }
 
         // Ban an IP address
         [HttpPost("ban-ip")]
@@ -115,6 +124,7 @@ namespace VirtuPathAPI.Controllers
                     return Unauthorized(new { error = "Invalid password." });
                 }
             }
+            await EnsureUserCryptoAsync(user, allowServerPrivate: true);
 
             // Persist IP + last active
             user.LastKnownIP = ipToCheck;
@@ -161,7 +171,7 @@ namespace VirtuPathAPI.Controllers
             "admin", "root", "system", "api", "login", "logout", "signup", "me", "settings",
             "dashboard", "virtu", "virtu-path-ai", "support", "terms", "privacy", "contact",
             "about", "pricing", "reset", "user", "users", "security", "public", "private",
-            "team", "teams", "help", "faq"
+            "team", "teams","virtupathai"," virtupathai.com","help", "faq"
         };
 
         [HttpPost]
@@ -206,12 +216,14 @@ namespace VirtuPathAPI.Controllers
             if (await _context.Users.AnyAsync(u => u.Email == user.Email))
                 return Conflict(new { error = "Email already in use" });
 
-            // ✅ Hash the password
+        
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
             user.RegistrationDate = DateTime.UtcNow;
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+              _context.Users.Add(user);
+            await _context.SaveChangesAsync();           // user.UserID is now set
+
+            await EnsureUserCryptoAsync(user, allowServerPrivate: true);
 
             return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
         }
@@ -866,6 +878,72 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             // 5) Return all user‐stats in one JSON array
             return Ok(result);
         }
+      // base64url
+static string B64Url(byte[] bytes)
+{
+    return Convert.ToBase64String(bytes)
+        .TrimEnd('=').Replace('+','-').Replace('/','_');
+}
+
+// ----- PEM exporters -----
+static string ExportRsaPublicPem(RSA rsa)
+{
+    var pub = rsa.ExportSubjectPublicKeyInfo(); // PKCS#8 public
+    var b64 = Convert.ToBase64String(pub);
+    return $"-----BEGIN PUBLIC KEY-----\n{Chunk64(b64)}\n-----END PUBLIC KEY-----\n";
+}
+static string ExportRsaPrivatePkcs8Pem(RSA rsa)
+{
+    var pk = rsa.ExportPkcs8PrivateKey();
+    var b64 = Convert.ToBase64String(pk);
+    return $"-----BEGIN PRIVATE KEY-----\n{Chunk64(b64)}\n-----END PRIVATE KEY-----\n";
+}
+static string Chunk64(string s)
+{
+    var sb = new StringBuilder(s.Length + s.Length/64*2);
+    for (int i=0; i<s.Length; i+=64) sb.AppendLine(s.Substring(i, Math.Min(64, s.Length - i)));
+    return sb.ToString().TrimEnd();
+}
+
+// PUBLIC-ONLY RSA JWK
+static string BuildRsaPublicJwk(RSA rsa)
+{
+    var p = rsa.ExportParameters(false);
+    return System.Text.Json.JsonSerializer.Serialize(new {
+        kty = "RSA",
+        n   = B64Url(p.Modulus!),
+        e   = B64Url(p.Exponent!),
+        key_ops = new[] { "encrypt" }
+    });
+}
+
+// X25519 keypair (public JWK, private raw)
+static (string publicJwk, byte[] privRaw) GenerateX25519Pair()
+{
+    var gen = new X25519KeyPairGenerator();
+    gen.Init(new Org.BouncyCastle.Crypto.KeyGenerationParameters(new SecureRandom(), 255));
+    var kp = gen.GenerateKeyPair();
+
+    var priv = ((X25519PrivateKeyParameters)kp.Private).GetEncoded(); // 32 bytes
+    var pub  = ((X25519PublicKeyParameters) kp.Public).GetEncoded();  // 32 bytes
+
+    var jwk = System.Text.Json.JsonSerializer.Serialize(new {
+        kty = "OKP",
+        crv = "X25519",
+        x   = B64Url(pub),
+        key_ops = new[] { "deriveKey" }
+    });
+    return (jwk, priv);
+}
+
+// protect -> base64 string (so it fits nvarchar(max))
+string ProtectToB64(string plaintext)
+{
+    var bytes = Encoding.UTF8.GetBytes(plaintext);
+    var sealedBytes = _protector.Protect(bytes);
+    return Convert.ToBase64String(sealedBytes);
+}
+
         [HttpGet("debug-all-users")]
         public async Task<IActionResult> DebugAllUsers()
         {
@@ -935,6 +1013,80 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             await _context.SaveChangesAsync();
             return NoContent();
         }
+        private async Task EnsureUserCryptoAsync(User u, bool allowServerPrivate = true)
+{
+    await _context.Entry(u).Reference(x => x.KeyVault).LoadAsync();
+
+    bool userDirty = false;
+    bool vaultDirty = false;
+
+    var vault = u.KeyVault;
+
+    // 1) RSA keys
+    if (string.IsNullOrEmpty(u.PublicKeyJwk) || (allowServerPrivate && (vault == null || string.IsNullOrEmpty(vault.PubKeyPem) || string.IsNullOrEmpty(vault.EncPrivKeyPem))))
+    {
+        using var rsa = RSA.Create(2048);
+
+        // Always (re)fill PUBLIC JWK on the user if missing
+        if (string.IsNullOrEmpty(u.PublicKeyJwk))
+        {
+            u.PublicKeyJwk = BuildRsaPublicJwk(rsa);
+            userDirty = true;
+        }
+
+        if (allowServerPrivate)
+        {
+            var publicPem  = ExportRsaPublicPem(rsa);
+            var privatePem = ExportRsaPrivatePkcs8Pem(rsa);
+            var encPrivB64 = ProtectToB64(privatePem);
+
+            if (vault == null)
+            {
+                vault = new CobaltUserKeyVault
+                {
+                    UserId         = u.UserID,
+                    PubKeyPem      = publicPem,
+                    EncPrivKeyPem  = encPrivB64,
+                    CreatedAt      = DateTime.UtcNow,
+                    IsActive       = true
+                };
+                _context.Add(vault);
+                u.KeyVault = vault; // attach for tracking
+            }
+            else
+            {
+                // Only fill missing pieces—don't rotate silently
+                if (string.IsNullOrEmpty(vault.PubKeyPem))     vault.PubKeyPem     = publicPem;
+                if (string.IsNullOrEmpty(vault.EncPrivKeyPem)) vault.EncPrivKeyPem = encPrivB64;
+                _context.Update(vault);
+            }
+            vaultDirty = true;
+        }
+    }
+
+    // 2) X25519 (public). Prefer client-supplied; otherwise backfill.
+    if (string.IsNullOrEmpty(u.X25519PublicJwk))
+    {
+        var (pubJwk, _priv) = GenerateX25519Pair();
+        u.X25519PublicJwk = pubJwk;
+        userDirty = true;
+
+        // mirror into vault if you want centralized read (optional)
+        if (vault != null && string.IsNullOrEmpty(vault.X25519PublicJwk))
+        {
+            vault.X25519PublicJwk = pubJwk;
+            _context.Update(vault);
+            vaultDirty = true;
+        }
+    }
+
+    // NOTE: EncRatchetPrivKeyJson should be set when your client posts its ratchet private key.
+    // We do NOT generate or store it here.
+
+    if (userDirty)  _context.Users.Update(u);
+    if (userDirty || vaultDirty)
+        await _context.SaveChangesAsync();
+}
         public class LoginRequest
         {
             public string Identifier { get; set; } // email or username

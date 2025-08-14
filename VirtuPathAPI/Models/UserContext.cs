@@ -10,14 +10,16 @@ namespace VirtuPathAPI.Models
         public DbSet<User> Users { get; set; }
         public DbSet<UserSubscription> UserSubscriptions { get; set; }
         public DbSet<UserFriend> UserFriends { get; set; }
-
-        // ← Add this line:
         public DbSet<PerformanceReview> PerformanceReviews { get; set; }
 
-        public DbSet<CobaltUserKeyVault> CobaltUserKeyVault { get; set; }
+        // (Optional but recommended naming)
+        public DbSet<CobaltUserKeyVault> CobaltUserKeyVaults { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            base.OnModelCreating(modelBuilder);
+
+            // existing friend links
             modelBuilder.Entity<UserFriend>()
                 .HasOne(f => f.Follower)
                 .WithMany()
@@ -29,6 +31,13 @@ namespace VirtuPathAPI.Models
                 .WithMany()
                 .HasForeignKey(f => f.FollowedId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            // NEW: 1–1 User <-> CobaltUserKeyVault
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.KeyVault)
+                .WithOne(v => v.User)
+                .HasForeignKey<CobaltUserKeyVault>(v => v.UserId)
+                .OnDelete(DeleteBehavior.Cascade); // or Restrict if you don’t want vaults auto-deleted
         }
     }
 }
