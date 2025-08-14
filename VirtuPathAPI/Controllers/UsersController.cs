@@ -174,59 +174,67 @@ namespace VirtuPathAPI.Controllers
             "team", "teams","virtupathai"," virtupathai.com","help", "faq"
         };
 
-        [HttpPost]
-        public async Task<ActionResult<User>> CreateUser(User user)
+       [HttpPost]
+        public async Task<IActionResult> CreateUser([FromBody] User user)
         {
-            // ✅ Check required fields
+            // 1) Requireds
             if (string.IsNullOrWhiteSpace(user.Email) ||
                 string.IsNullOrWhiteSpace(user.PasswordHash) ||
                 string.IsNullOrWhiteSpace(user.Username))
             {
-                return BadRequest("Email, password, and username are required.");
+                return BadRequest(new { error = "Email, password, and username are required." });
             }
 
-            // ✅ Trim and lowercase the username
+            // 2) Normalize username (lowercase, trimmed)
             user.Username = user.Username.Trim().ToLower();
 
-            // ✅ Reserved username check
+            // 3) Reserved/profanity/format
             if (ReservedUsernames.Contains(user.Username))
-            {
-                return BadRequest("This username is reserved. Please choose another.");
-            }
+                return BadRequest(new { error = "This username is reserved. Please choose another." });
 
-            // ✅ Profanity check (this was missing)
             foreach (var word in ProfanityList.Words)
-            {
                 if (user.Username.Contains(word))
-                {
-                    return BadRequest("Username contains inappropriate content.");
-                }
-            }
+                    return BadRequest(new { error = "Username contains inappropriate content." });
 
-            // ✅ Format check
             if (!Regex.IsMatch(user.Username, @"^[a-z0-9_]{3,20}$"))
-            {
-                return BadRequest("Username must be 3–20 characters and contain only lowercase letters, numbers, or underscores.");
-            }
+                return BadRequest(new { error = "Username must be 3–20 chars, lowercase letters/numbers/underscores." });
 
-            // ✅ Check for duplicates
+            // 4) Uniqueness (case-insensitive)
+            var emailNorm = user.Email.Trim().ToLower();
             if (await _context.Users.AnyAsync(u => u.Username == user.Username))
                 return Conflict(new { error = "Username already taken" });
-
-            if (await _context.Users.AnyAsync(u => u.Email == user.Email))
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailNorm))
                 return Conflict(new { error = "Email already in use" });
 
-        
+            // 5) Hash password + timestamps
+            user.Email = emailNorm;
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
             user.RegistrationDate = DateTime.UtcNow;
 
-              _context.Users.Add(user);
-            await _context.SaveChangesAsync();           // user.UserID is now set
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
 
-            await EnsureUserCryptoAsync(user, allowServerPrivate: true);
+            // 6) Best-effort crypto init (do not fail signup if this throws)
+            try
+            {
+                await EnsureUserCryptoAsync(user, allowServerPrivate: true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CreateUser] key init failed for user {user.UserID}: {ex.Message}");
+                // do not return error; signup already succeeded
+            }
 
-            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
+            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, new
+            {
+                user.UserID,
+                user.Username,
+                user.FullName,
+                user.Email,
+                user.RegistrationDate
+            });
         }
+
 
         [HttpGet("by-username/{username}")]
         public async Task<IActionResult> GetUserByUsername(string username)
