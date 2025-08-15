@@ -36,44 +36,53 @@ namespace VirtuPathAPI.Controllers
                           .Select(u => (int?)u.UserID)
                           .FirstOrDefaultAsync();
 
-        // in ChatController.cs
         [HttpGet("messages/{withUserId:int}")]
-        public async Task<IActionResult> GetMessages(int withUserId)
+public async Task<IActionResult> GetMessages(int withUserId)
+{
+    var me = GetCurrentUserId();
+    if (me == null) return Unauthorized();
+    if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
+
+    var rows = await _context.ChatMessages
+        .Where(m =>
+            (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
+            (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver))
+        .OrderBy(m => m.SentAt)
+        .Select(m => new
         {
-            var me = GetCurrentUserId();
-            if (me == null) return Unauthorized();
-            if (!await AreFriendsAsync(me.Value, withUserId)) return Forbid();
+            id = m.Id,
+            senderId = m.SenderId,
+            receiverId = m.ReceiverId,
 
-            var rows = await _context.ChatMessages
-                .Where(m =>
-                    (m.SenderId == me && m.ReceiverId == withUserId && !m.IsDeletedForSender) ||
-                    (m.SenderId == withUserId && m.ReceiverId == me && !m.IsDeletedForReceiver))
-                .OrderBy(m => m.SentAt)
-                .Select(m => new
-                {
-                    id = m.Id,
-                    senderId = m.SenderId,
-                    receiverId = m.ReceiverId,
+            iv = m.Iv,
+            message = m.Message,
+            tag = m.Tag,
 
-                    // **REAL** columns → alias them to what your client wants
-                    iv = m.Iv,
-                    message = m.Message,
-                    tag = m.Tag,
+            sentAt = m.SentAt,
+            replyToMessageId = m.ReplyToMessageId,
+            isEdited = m.IsEdited,
+            isDeletedForSender = m.IsDeletedForSender,
+            isDeletedForReceiver = m.IsDeletedForReceiver,
+            isDelivered = m.IsDelivered,
+            deliveredAt = m.DeliveredAt,
+            isRead = m.IsRead,
+            readAt = m.ReadAt,
 
-                    sentAt = m.SentAt,
-                    replyToMessageId = m.ReplyToMessageId,
-                    isEdited = m.IsEdited,
-                    isDeletedForSender = m.IsDeletedForSender,
-                    isDeletedForReceiver = m.IsDeletedForReceiver,
-                    isDelivered = m.IsDelivered,
-                    deliveredAt = m.DeliveredAt,
-                    isRead = m.IsRead,
-                    readAt = m.ReadAt
+            // 👇 include reactions so the client can render on reload
+            reactions = _context.MessageReactions
+                .Where(r => r.MessageId == m.Id)
+                .Select(r => new {
+                    userId            = r.UserId,
+                    emoji             = r.Emoji,
+                    fullName          = r.User.FullName,
+                    profilePictureUrl = r.User.ProfilePictureUrl
                 })
-                .ToListAsync();
+                .ToList()
+        })
+        .ToListAsync();
 
-            return Ok(rows);
-        }
+    return Ok(rows);
+}
 [HttpGet("unread‑counts")]
 public async Task<IActionResult> GetUnreadCounts()
 {
@@ -171,7 +180,7 @@ public async Task<IActionResult> GetConversationKey(int withUserId)
 }
 
 
-     [HttpPost("send")]
+    [HttpPost("send")]
 public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
 {
     var me = GetCurrentUserId();
@@ -187,16 +196,19 @@ public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
         SentAt           = DateTimeOffset.UtcNow,
         ReplyToMessageId = req.ReplyToMessageId
     };
+
     _context.ChatMessages.Add(msg);
+    await _context.SaveChangesAsync();            // 👈 msg.Id is now assigned
 
     if (!string.IsNullOrWhiteSpace(req.ReactionEmoji))
+    {
         _context.MessageReactions.Add(new MessageReaction {
             MessageId = msg.Id,
             UserId    = me.Value,
             Emoji     = req.ReactionEmoji
         });
-
-    await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync();
+    }
 
     var payload = new {
         id               = msg.Id,
@@ -210,9 +222,9 @@ public async Task<IActionResult> SendMessage([FromBody] SendMessageRequest req)
     };
 
     await _hub.Clients.User(req.ReceiverId.ToString())
-                   .SendAsync("ReceiveEncryptedMessage", payload);
+             .SendAsync("ReceiveEncryptedMessage", payload);
     await _hub.Clients.User(me.Value.ToString())
-                   .SendAsync("ReceiveEncryptedMessage", payload);
+             .SendAsync("ReceiveEncryptedMessage", payload);
 
     return Ok(new { id = msg.Id });
 }
