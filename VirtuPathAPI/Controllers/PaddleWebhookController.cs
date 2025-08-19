@@ -115,28 +115,34 @@ namespace VirtuPathAPI.Controllers
         }
 
         // ---------------- Return endpoint (best UX): Paddle redirects here with _ptxn ----------------
-        // successUrl = https://YOUR_API_DOMAIN/api/paddle/webhook/return?next=https%3A%2F%2Fapp.yourdomain.com%2Fthank-you
-        [HttpGet("return"), AllowAnonymous]
-        public async Task<IActionResult> Return([FromQuery(Name = "_ptxn")] string? txnId, [FromQuery] string? next)
+    [HttpGet("return"), AllowAnonymous]
+    public async Task<IActionResult> Return(
+        [FromQuery(Name = "_ptxn")] string? txnId,
+        [FromQuery] string? next)
+    {
+        // If Paddle/SDK didn't give us a transaction id, don't 400 — bounce to thank-you as pending
+        if (string.IsNullOrWhiteSpace(txnId))
         {
-            if (string.IsNullOrWhiteSpace(txnId))
-                return BadRequest(new { error = "Missing _ptxn" });
-
-            var tx = await FetchTransactionFromPaddleAsync(txnId);
-            if (tx == null)
-                return BadRequest(new { error = "Could not fetch transaction from Paddle" });
-
-            if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
-            {
-                _log.LogWarning("Return: transaction {Txn} not completed (status={Status})", txnId, tx.status);
-                // still redirect, but note the flag
-                return Redirect(ComposeNext(next, ok: false, msg: "pending"));
-            }
-
-            await ProcessTransactionAsync(tx);
-
-            return Redirect(ComposeNext(next, ok: true, msg: null));
+            _log.LogInformation("Return: no _ptxn in query; redirecting as pending.");
+            return Redirect(ComposeNext(next, ok: false, msg: "no_ptxn"));
         }
+
+        var tx = await FetchTransactionFromPaddleAsync(txnId);
+        if (tx == null)
+        {
+            _log.LogWarning("Return: fetch failed for txn {Txn}", txnId);
+            return Redirect(ComposeNext(next, ok: false, msg: "fetch_failed"));
+        }
+
+        if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogInformation("Return: txn {Txn} not completed (status={Status})", txnId, tx.status);
+            return Redirect(ComposeNext(next, ok: false, msg: "pending"));
+        }
+
+        await ProcessTransactionAsync(tx);
+        return Redirect(ComposeNext(next, ok: true, msg: null));
+    }
 
         private static string ComposeNext(string? next, bool ok, string? msg)
         {
