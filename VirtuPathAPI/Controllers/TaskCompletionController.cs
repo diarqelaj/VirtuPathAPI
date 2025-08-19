@@ -43,7 +43,7 @@ namespace VirtuPathAPI.Controllers
                 // Step 2: Get the user's latest subscription
                 var subscription = await _context.UserSubscriptions
                     .Where(s => s.UserID == completion.UserID)
-                    .OrderByDescending(s => s.StartDate)
+                    .OrderByDescending(s => s.StartAt)
                     .FirstOrDefaultAsync();
 
                 if (subscription != null)

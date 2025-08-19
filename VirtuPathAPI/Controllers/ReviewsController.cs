@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using VirtuPathAPI.Data;
 using VirtuPathAPI.Models;
+using VirtuPathAPI.Data; 
 
 namespace VirtuPathAPI.Controllers
 {
@@ -21,10 +21,6 @@ namespace VirtuPathAPI.Controllers
             _subs = subs;
         }
 
-        // POST /api/reviews
-        // Body: { "userID": 1, "careerPathID": 2, "rating": 5 }
-        // Inside ReviewsController.cs
-
         // POST: /api/reviews
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] Review input)
@@ -32,20 +28,22 @@ namespace VirtuPathAPI.Controllers
             if (input == null) return BadRequest("Invalid payload.");
             if (input.Rating < 1 || input.Rating > 5) return BadRequest("Rating must be 1-5.");
 
-            // ✅ Block duplicates (one review per user per path)
+            // One review per user per career path
             var already = await _reviews.Reviews.AnyAsync(r =>
                 r.UserID == input.UserID && r.CareerPathID == input.CareerPathID);
             if (already)
                 return Conflict("You have already submitted a review for this career path.");
 
-            // Only allow if user has an active subscription (StartDate..EndDate)
+            // Must have an active entitlement now
             var now = DateTime.UtcNow;
             var active = await _subs.UserSubscriptions.AnyAsync(s =>
                 s.UserID == input.UserID &&
                 s.CareerPathID == input.CareerPathID &&
-                s.StartDate <= now &&
-                s.EndDate >= now
-            );
+                s.IsActive &&
+                !s.IsCanceled &&
+                s.StartAt <= now &&
+                (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd >= now));
+
             if (!active)
                 return Forbid("Only subscribed users can leave a review for this career path.");
 
@@ -62,7 +60,6 @@ namespace VirtuPathAPI.Controllers
             return CreatedAtAction(nameof(GetById), new { id = review.ReviewID }, review);
         }
 
-        // GET: /api/reviews/exists?userId=1&careerPathId=2
         [HttpGet("exists")]
         public async Task<IActionResult> Exists([FromQuery] int userId, [FromQuery] int careerPathId)
         {
@@ -71,8 +68,6 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { exists });
         }
 
-
-        // GET /api/reviews/{id}
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById([FromRoute] int id)
         {
@@ -81,7 +76,6 @@ namespace VirtuPathAPI.Controllers
             return Ok(review);
         }
 
-        // GET /api/reviews/by-career/{careerPathId}?page=1&pageSize=20
         [HttpGet("by-career/{careerPathId:int}")]
         public async Task<IActionResult> GetByCareer([FromRoute] int careerPathId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
@@ -98,7 +92,6 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { total, page, pageSize, items });
         }
 
-        // GET /api/reviews/average/{careerPathId}
         [HttpGet("average/{careerPathId:int}")]
         public async Task<IActionResult> GetAverage([FromRoute] int careerPathId)
         {
@@ -113,7 +106,7 @@ namespace VirtuPathAPI.Controllers
 
             return Ok(new { careerPathId, average = Math.Round(avg, 2), count });
         }
-        // GET: /api/reviews
+
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
@@ -121,8 +114,6 @@ namespace VirtuPathAPI.Controllers
             return Ok(reviews);
         }
 
-
-        // DELETE /api/reviews/{id}
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete([FromRoute] int id)
         {

@@ -10,23 +10,30 @@ using System.Text.Json.Serialization;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using ImgSize = SixLabors.ImageSharp.Size;
-using SixLabors.ImageSharp.Formats.Webp;
-
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.DataProtection;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
 namespace VirtuPathAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class UsersController : ControllerBase
-    {
-        private readonly UserContext _context;
-        private static readonly HashSet<string> BannedIPs = new();
-        private readonly Cloudinary _cloud;
+   public class UsersController : ControllerBase
+{
+    private readonly UserContext _context;
+    private static readonly HashSet<string> BannedIPs = new();
+    private readonly IDataProtector _protector;
+    private readonly Cloudinary _cloud;
 
-        public UsersController(UserContext context, Cloudinary cloud)
-        {
-            _context = context;
-             _cloud   = cloud;
-        }
+    // ⬇️ inject IDataProtectionProvider and use it
+    public UsersController(UserContext context, Cloudinary cloud, IDataProtectionProvider dataProtection)
+    {
+        _context = context;
+        _cloud   = cloud;
+        _protector = dataProtection.CreateProtector("VirtuPath.Keys.UserPrivate.v1");
+    }
 
         // Ban an IP address
         [HttpPost("ban-ip")]
@@ -69,19 +76,14 @@ namespace VirtuPathAPI.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
-            // ── Determine the IP we should check ─────────────────────────
             var ipToCheck = !string.IsNullOrEmpty(req.ClientPublicIp)
                             ? req.ClientPublicIp
                             : HttpContext.Connection.RemoteIpAddress?.ToString();
             if (ipToCheck == "::1") ipToCheck = "127.0.0.1";
 
-            // ── ENFORCE BAN ──────────────────────────────────────────────
+           
             if (BannedIPs.Contains(ipToCheck))
-            {
-                // 403 Forbidden
                 return Forbid($"Access denied from IP {ipToCheck}");
-            }
-            // ───────────────────────────────────────────────────────────────
 
             if (string.IsNullOrWhiteSpace(req.Identifier))
                 return BadRequest(new { error = "Email or username is required." });
@@ -91,36 +93,44 @@ namespace VirtuPathAPI.Controllers
                 u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
 
             if (user == null)
-                return Unauthorized(new { error = "User not found." });
-
-            // Password check...
-            if (!string.IsNullOrWhiteSpace(req.Password))
             {
-                if (string.IsNullOrEmpty(user.PasswordHash))
-                    return Unauthorized(new { error = "This account uses Google authentication." });
-                if (!BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                    return Unauthorized(new { error = "Invalid password." });
+             
+                return Unauthorized(new { error = "User not found." });
+            }
+
+            // ✅ Password vs Google logic
+            if (req.IsGoogleLogin)
+            {
+                // Allow login regardless of PasswordHash (account may have set a password later)
+            
             }
             else
             {
-                if (!string.IsNullOrEmpty(user.PasswordHash))
+                if (string.IsNullOrWhiteSpace(req.Password))
+                {
+                 
                     return Unauthorized(new { error = "Password required for this account." });
-            }
+                }
 
-            // ── Persist the IP immediately ────────────────────────────────
+                if (string.IsNullOrEmpty(user.PasswordHash) ||
+                    !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+                {
+                
+                    return Unauthorized(new { error = "Invalid password." });
+                }
+            }
+            await EnsureUserCryptoAsync(user, allowServerPrivate: true);
+
+            // Persist IP + last active
             user.LastKnownIP = ipToCheck;
-            // ── Update “last active” timestamp ───────────────────────────
             user.LastActiveAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            // ───────────────────────────────────────────────────────────────
-
-            // 2FA?
-            if (user.IsTwoFactorEnabled)
+            if (user.IsTwoFactorEnabled && !req.IsGoogleLogin)
                 return Ok(new { requires2FA = true });
 
-            // Finalize login
             HttpContext.Session.SetInt32("UserID", user.UserID);
+
             if (req.RememberMe)
             {
                 Response.Cookies.Append("VirtuPathRemember", user.UserID.ToString(), new CookieOptions
@@ -131,6 +141,8 @@ namespace VirtuPathAPI.Controllers
                     Expires = DateTimeOffset.UtcNow.AddMonths(1),
                 });
             }
+          
+
 
             return Ok(new
             {
@@ -155,60 +167,97 @@ namespace VirtuPathAPI.Controllers
             "admin", "root", "system", "api", "login", "logout", "signup", "me", "settings",
             "dashboard", "virtu", "virtu-path-ai", "support", "terms", "privacy", "contact",
             "about", "pricing", "reset", "user", "users", "security", "public", "private",
-            "team", "teams", "help", "faq"
+            "team", "teams","virtupathai"," virtupathai.com","help", "faq"
         };
 
-        [HttpPost]
-        public async Task<ActionResult<User>> CreateUser(User user)
-        {
-            // ✅ Check required fields
-            if (string.IsNullOrWhiteSpace(user.Email) ||
-                string.IsNullOrWhiteSpace(user.PasswordHash) ||
-                string.IsNullOrWhiteSpace(user.Username))
-            {
-                return BadRequest("Email, password, and username are required.");
-            }
+       [HttpPost]
+public async Task<IActionResult> CreateUser([FromBody] User incoming)
+{
+    if (incoming is null)
+        return BadRequest(new { error = "Missing request body." });
 
-            // ✅ Trim and lowercase the username
-            user.Username = user.Username.Trim().ToLower();
+    // 1) Requireds
+    var username = incoming.Username?.Trim().ToLower();
+    var emailNorm = incoming.Email?.Trim().ToLower();
 
-            // ✅ Reserved username check
-            if (ReservedUsernames.Contains(user.Username))
-            {
-                return BadRequest("This username is reserved. Please choose another.");
-            }
+    if (string.IsNullOrWhiteSpace(emailNorm) ||
+        string.IsNullOrWhiteSpace(incoming.PasswordHash) ||
+        string.IsNullOrWhiteSpace(username))
+    {
+        return BadRequest(new { error = "Email, password, and username are required." });
+    }
 
-            // ✅ Profanity check (this was missing)
-            foreach (var word in ProfanityList.Words)
-            {
-                if (user.Username.Contains(word))
-                {
-                    return BadRequest("Username contains inappropriate content.");
-                }
-            }
+    // 2) Reserved / profanity / format
+    if (ReservedUsernames.Contains(username))
+        return BadRequest(new { error = "This username is reserved. Please choose another." });
 
-            // ✅ Format check
-            if (!Regex.IsMatch(user.Username, @"^[a-z0-9_]{3,20}$"))
-            {
-                return BadRequest("Username must be 3–20 characters and contain only lowercase letters, numbers, or underscores.");
-            }
+    foreach (var word in ProfanityList.Words)
+        if (username.Contains(word))
+            return BadRequest(new { error = "Username contains inappropriate content." });
 
-            // ✅ Check for duplicates
-            if (await _context.Users.AnyAsync(u => u.Username == user.Username))
-                return Conflict(new { error = "Username already taken" });
+    if (!Regex.IsMatch(username, @"^[a-z0-9_]{3,20}$"))
+        return BadRequest(new { error = "Username must be 3–20 chars, lowercase letters/numbers/underscores." });
 
-            if (await _context.Users.AnyAsync(u => u.Email == user.Email))
-                return Conflict(new { error = "Email already in use" });
+    // 3) Uniqueness
+    if (await _context.Users.AnyAsync(u => u.Username == username))
+        return Conflict(new { error = "Username already taken" });
 
-            // ✅ Hash the password
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
-            user.RegistrationDate = DateTime.UtcNow;
+    if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailNorm))
+        return Conflict(new { error = "Email already in use" });
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+    // 4) Build a fresh entity (never reuse the bound object)
+    var user = new User
+    {
+        UserID             = 0, // guard against explicit ID in payload
+        FullName           = incoming.FullName,
+        Username           = username,
+        Email              = emailNorm,
+        PasswordHash       = BCrypt.Net.BCrypt.HashPassword(incoming.PasswordHash),
+        RegistrationDate   = DateTime.UtcNow,
 
-            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
-        }
+        // optional prefs from client (defaults are false in the model)
+        ProductUpdates       = incoming.ProductUpdates,
+        CareerTips           = incoming.CareerTips,
+        NewCareerPathAlerts  = incoming.NewCareerPathAlerts,
+        Promotions           = incoming.Promotions,
+        IsProfilePrivate     = incoming.IsProfilePrivate,
+
+        // safe defaults
+        IsVerified         = false,
+        IsOfficial         = false,
+        IsTwoFactorEnabled = false,
+        CurrentDay         = 0,
+
+        // clear server-managed fields
+        Bio                    = null,
+        About                  = null,
+        ProfilePictureUrl      = null,
+        ProfilePicturePublicId = null,
+        CoverImageUrl          = null,
+        CoverImagePublicId     = null,
+        PublicKeyJwk           = null,
+        X25519PublicJwk        = null,
+        KeyVault               = null, // IMPORTANT: avoid EF trying to insert principal twice
+    };
+
+    // 5) Save once to get identity
+    _context.Users.Add(user);
+    await _context.SaveChangesAsync();   // user.UserID is now set
+
+    // 6) Best-effort crypto init; don't fail signup if it throws
+    try
+    {
+        await EnsureUserCryptoAsync(user, allowServerPrivate: true);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CreateUser] key provision failed for user {user.UserID}: {ex.Message}");
+        // Signup already succeeded; continue without blocking the response
+    }
+
+    return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
+}
+
 
         [HttpGet("by-username/{username}")]
         public async Task<IActionResult> GetUserByUsername(string username)
@@ -860,6 +909,72 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             // 5) Return all user‐stats in one JSON array
             return Ok(result);
         }
+      // base64url
+static string B64Url(byte[] bytes)
+{
+    return Convert.ToBase64String(bytes)
+        .TrimEnd('=').Replace('+','-').Replace('/','_');
+}
+
+// ----- PEM exporters -----
+static string ExportRsaPublicPem(RSA rsa)
+{
+    var pub = rsa.ExportSubjectPublicKeyInfo(); // PKCS#8 public
+    var b64 = Convert.ToBase64String(pub);
+    return $"-----BEGIN PUBLIC KEY-----\n{Chunk64(b64)}\n-----END PUBLIC KEY-----\n";
+}
+static string ExportRsaPrivatePkcs8Pem(RSA rsa)
+{
+    var pk = rsa.ExportPkcs8PrivateKey();
+    var b64 = Convert.ToBase64String(pk);
+    return $"-----BEGIN PRIVATE KEY-----\n{Chunk64(b64)}\n-----END PRIVATE KEY-----\n";
+}
+static string Chunk64(string s)
+{
+    var sb = new StringBuilder(s.Length + s.Length/64*2);
+    for (int i=0; i<s.Length; i+=64) sb.AppendLine(s.Substring(i, Math.Min(64, s.Length - i)));
+    return sb.ToString().TrimEnd();
+}
+
+// PUBLIC-ONLY RSA JWK
+static string BuildRsaPublicJwk(RSA rsa)
+{
+    var p = rsa.ExportParameters(false);
+    return System.Text.Json.JsonSerializer.Serialize(new {
+        kty = "RSA",
+        n   = B64Url(p.Modulus!),
+        e   = B64Url(p.Exponent!),
+        key_ops = new[] { "encrypt" }
+    });
+}
+
+// X25519 keypair (public JWK, private raw)
+static (string publicJwk, byte[] privRaw) GenerateX25519Pair()
+{
+    var gen = new X25519KeyPairGenerator();
+    gen.Init(new Org.BouncyCastle.Crypto.KeyGenerationParameters(new SecureRandom(), 255));
+    var kp = gen.GenerateKeyPair();
+
+    var priv = ((X25519PrivateKeyParameters)kp.Private).GetEncoded(); // 32 bytes
+    var pub  = ((X25519PublicKeyParameters) kp.Public).GetEncoded();  // 32 bytes
+
+    var jwk = System.Text.Json.JsonSerializer.Serialize(new {
+        kty = "OKP",
+        crv = "X25519",
+        x   = B64Url(pub),
+        key_ops = new[] { "deriveKey" }
+    });
+    return (jwk, priv);
+}
+
+// protect -> base64 string (so it fits nvarchar(max))
+string ProtectToB64(string plaintext)
+{
+    var bytes = Encoding.UTF8.GetBytes(plaintext);
+    var sealedBytes = _protector.Protect(bytes);
+    return Convert.ToBase64String(sealedBytes);
+}
+
         [HttpGet("debug-all-users")]
         public async Task<IActionResult> DebugAllUsers()
         {
@@ -929,6 +1044,58 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             await _context.SaveChangesAsync();
             return NoContent();
         }
+      private async Task EnsureUserCryptoAsync(User u, bool allowServerPrivate = true)
+{
+    if (_context.Entry(u).State == EntityState.Detached)
+    {
+        var tracked = await _context.Users.FindAsync(u.UserID);
+        if (tracked != null) u = tracked; else _context.Attach(u);
+    }
+
+    var vault = await _context.CobaltUserKeyVaults
+        .SingleOrDefaultAsync(v => v.UserId == u.UserID);
+
+    bool userChanged  = false;
+    bool vaultChanged = false;
+
+    if (string.IsNullOrEmpty(u.PublicKeyJwk))
+    {
+        using var rsa = RSA.Create(2048);
+        u.PublicKeyJwk = BuildRsaPublicJwk(rsa);
+        userChanged = true;
+
+        if (allowServerPrivate)
+        {
+            var pubPem  = ExportRsaPublicPem(rsa);
+            var privPem = ExportRsaPrivatePkcs8Pem(rsa);
+            var encPriv = ProtectToB64(privPem);
+
+            if (vault == null)
+            {
+                vault = new CobaltUserKeyVault
+                {
+                    UserId        = u.UserID,
+                    PubKeyPem     = pubPem,
+                    EncPrivKeyPem = encPriv,
+                    CreatedAt     = DateTime.UtcNow,
+                    IsActive      = true
+                };
+                _context.CobaltUserKeyVaults.Add(vault);
+                vaultChanged = true;
+            }
+            else
+            {
+                if (string.IsNullOrEmpty(vault.PubKeyPem))     { vault.PubKeyPem = pubPem;     vaultChanged = true; }
+                if (string.IsNullOrEmpty(vault.EncPrivKeyPem)) { vault.EncPrivKeyPem = encPriv; vaultChanged = true; }
+            }
+        }
+    }
+
+    if (userChanged || vaultChanged)
+        await _context.SaveChangesAsync();
+}
+
+
         public class LoginRequest
         {
             public string Identifier { get; set; } // email or username

@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -9,100 +8,114 @@ namespace VirtuPathAPI.Controllers
     [Route("api/[controller]")]
     public class UserSubscriptionsController : ControllerBase
     {
-        private readonly UserSubscriptionContext _context;
+        private readonly UserSubscriptionContext _subs;
+        private readonly UserContext _users;
 
-        public UserSubscriptionsController(UserSubscriptionContext context)
+        public UserSubscriptionsController(UserSubscriptionContext subs, UserContext users)
         {
-            _context = context;
+            _subs  = subs;
+            _users = users;
         }
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<UserSubscription>>> GetUserSubscriptions()
         {
-            return await _context.UserSubscriptions.ToListAsync();
+            return await _subs.UserSubscriptions.ToListAsync();
         }
 
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         public async Task<ActionResult<UserSubscription>> GetUserSubscription(int id)
         {
-            var subscription = await _context.UserSubscriptions.FindAsync(id);
-            if (subscription == null)
-                return NotFound();
-
+            var subscription = await _subs.UserSubscriptions.FindAsync(id);
+            if (subscription == null) return NotFound();
             return subscription;
         }
 
         [HttpPost]
-        public async Task<ActionResult<UserSubscription>> CreateUserSubscription(UserSubscription subscription)
+        public async Task<ActionResult<UserSubscription>> CreateUserSubscription([FromBody] UserSubscription subscription)
         {
-            // Don't touch EndDate at all since it's a computed column
-            _context.UserSubscriptions.Add(subscription);
-            await _context.SaveChangesAsync();
+            // Ensure required fields
+            if (subscription.UserID <= 0 || subscription.CareerPathID <= 0)
+                return BadRequest("UserID and CareerPathID are required.");
 
-            // ✅ Now also update the User's CareerPathID and progress
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserID == subscription.UserID);
+            // Default StartAt if not provided
+            if (subscription.StartAt == default)
+                subscription.StartAt = DateTime.UtcNow;
+
+            // If CurrentPeriodEnd not provided, derive from Billing
+            if (subscription.CurrentPeriodEnd == null && !string.IsNullOrWhiteSpace(subscription.Billing))
+            {
+                var billing = subscription.Billing.Trim().ToLowerInvariant();
+                if (billing is "monthly")
+                    subscription.CurrentPeriodEnd = subscription.StartAt.AddDays(30);
+                else if (billing is "yearly")
+                    subscription.CurrentPeriodEnd = subscription.StartAt.AddDays(365);
+                // "one_time" or unknown → leave null (lifetime / external control)
+            }
+
+            _subs.UserSubscriptions.Add(subscription);
+            await _subs.SaveChangesAsync();
+
+            // Also set user's active career and kick off day 1 if needed
+            var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == subscription.UserID);
             if (user != null)
             {
                 user.CareerPathID = subscription.CareerPathID;
-                if (user.CurrentDay <= 0) user.CurrentDay = 1;  // 👈 start them
+                if (user.CurrentDay <= 0) user.CurrentDay = 1;
                 user.LastTaskDate = null;
                 user.LastKnownIP  = HttpContext.Connection.RemoteIpAddress?.ToString();
-                await _context.SaveChangesAsync();
+                user.LastActiveAt = DateTime.UtcNow;
+                await _users.SaveChangesAsync();
             }
 
-
-            return CreatedAtAction(nameof(GetUserSubscription), new { id = subscription.SubscriptionID }, subscription);
+            return CreatedAtAction(nameof(GetUserSubscription), new { id = subscription.Id }, subscription);
         }
 
-
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUserSubscription(int id, UserSubscription subscription)
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> UpdateUserSubscription(int id, [FromBody] UserSubscription subscription)
         {
-            if (id != subscription.SubscriptionID)
-                return BadRequest();
+            if (id != subscription.Id) return BadRequest("Mismatched id.");
 
-            _context.Entry(subscription).State = EntityState.Modified;
-
-            // Don't allow EndDate to be modified
-            _context.Entry(subscription).Property(x => x.EndDate).IsModified = false;
+            // We track only allowed updates; attach and mark modified
+            _subs.Entry(subscription).State = EntityState.Modified;
 
             try
             {
-                await _context.SaveChangesAsync();
+                await _subs.SaveChangesAsync();
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!_context.UserSubscriptions.Any(e => e.SubscriptionID == id))
-                    return NotFound();
-                else
-                    throw;
+                var exists = await _subs.UserSubscriptions.AnyAsync(s => s.Id == id);
+                if (!exists) return NotFound();
+                throw;
             }
 
             return NoContent();
         }
+
+        // kept route name but now returns StartAt (renamed from StartDate)
         [HttpGet("startdate")]
-        public async Task<ActionResult<DateTime>> GetStartDate(int userId, int careerPathId)
+        public async Task<ActionResult<DateTime>> GetStartDate([FromQuery] int userId, [FromQuery] int careerPathId)
         {
-            var subscription = await _context.UserSubscriptions
-                .FirstOrDefaultAsync(x => x.UserID == userId && x.CareerPathID == careerPathId);
+            var subscription = await _subs.UserSubscriptions
+                .Where(x => x.UserID == userId && x.CareerPathID == careerPathId)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync();
 
             if (subscription == null)
                 return NotFound("No subscription found");
 
-            return Ok(subscription.StartDate);
+            return Ok(subscription.StartAt);
         }
 
-
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteUserSubscription(int id)
         {
-            var subscription = await _context.UserSubscriptions.FindAsync(id);
-            if (subscription == null)
-                return NotFound();
+            var subscription = await _subs.UserSubscriptions.FindAsync(id);
+            if (subscription == null) return NotFound();
 
-            _context.UserSubscriptions.Remove(subscription);
-            await _context.SaveChangesAsync();
-
+            _subs.UserSubscriptions.Remove(subscription);
+            await _subs.SaveChangesAsync();
             return NoContent();
         }
     }
