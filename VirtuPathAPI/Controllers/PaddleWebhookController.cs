@@ -208,21 +208,30 @@ namespace VirtuPathAPI.Controllers
                 var exists = await _subs.UserSubscriptions.AnyAsync(s =>
                     s.UserID == resolvedUserId &&
                     s.CareerPathID == careerId &&
-                    s.PaddleTransactionId == tx.id);
+                    s.LastTransactionId == tx.id);
 
                 if (!exists)
                 {
-                    var sub = new UserSubscription
-                    {
-                        UserID              = resolvedUserId.Value,
-                        CareerPathID        = careerId,
-                        StartDate           = DateTime.UtcNow,
-                        LastAccessedDay     = 0,
-                        PaddleTransactionId = tx.id,
-                        PaddlePriceId       = priceId,
-                        PlanName            = plan,
-                        Billing             = billing
-                    };
+                    var startUtc = DateTime.UtcNow;
+                     DateTime? periodEnd = null;
+                     if (string.Equals(billing, "monthly", StringComparison.OrdinalIgnoreCase))
+                         periodEnd = startUtc.AddDays(30);
+                     else if (string.Equals(billing, "yearly", StringComparison.OrdinalIgnoreCase))
+                         periodEnd = startUtc.AddDays(365);
+                     // else: one_time / lifetime => leave null
+                    
+                     var sub = new UserSubscription
+                     {
+                         UserID           = resolvedUserId.Value,
+                         CareerPathID     = careerId,
+                         Plan             = plan,      // "starter" | "pro" | "bonus"
+                         Billing          = billing,   // "monthly" | "yearly" | "one_time"
+                         StartAt          = startUtc,
+                         CurrentPeriodEnd = periodEnd,
+                         LastTransactionId= tx.id,
+                         IsActive         = true,
+                         IsCanceled       = false,
+                     };
                     _subs.UserSubscriptions.Add(sub);
                     await _subs.SaveChangesAsync();
 

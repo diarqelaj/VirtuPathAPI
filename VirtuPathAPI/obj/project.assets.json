@@ -6798,25 +6798,24 @@
     ]
   },
   "packageFolders": {
-    "/home/pluto/.nuget/packages/": {}
+    "C:\\Users\\Gaming\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
+      "projectUniqueName": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\VirtuPathAPI.csproj",
       "projectName": "VirtuPathAPI",
-      "projectPath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/VirtuPathAPI.csproj",
-      "packagesPath": "/home/pluto/.nuget/packages/",
-      "outputPath": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/obj/",
+      "projectPath": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\VirtuPathAPI.csproj",
+      "packagesPath": "C:\\Users\\Gaming\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/home/pluto/.nuget/NuGet/NuGet.Config"
+        "C:\\Users\\Gaming\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net6.0"
       ],
       "sources": {
-        "/usr/lib/dotnet/library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -6829,13 +6828,7 @@
         "warnAsError": [
           "NU1605"
         ]
-      },
-      "restoreAuditProperties": {
-        "enableAudit": "true",
-        "auditLevel": "low",
-        "auditMode": "direct"
-      },
-      "SdkAnalysisLevel": "9.0.100"
+      }
     },
     "frameworks": {
       "net6.0": {
@@ -6899,20 +6892,6 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
-        "downloadDependencies": [
-          {
-            "name": "Microsoft.AspNetCore.App.Ref",
-            "version": "[6.0.36, 6.0.36]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Host.linux-x64",
-            "version": "[6.0.36, 6.0.36]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Ref",
-            "version": "[6.0.36, 6.0.36]"
-          }
-        ],
         "frameworkReferences": {
           "Microsoft.AspNetCore.App": {
             "privateAssets": "none"
@@ -6921,20 +6900,8 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/9.0.105/RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\6.0.428\\RuntimeIdentifierGraph.json"
       }
     }
-  },
-  "logs": [
-    {
-      "code": "NU1902",
-      "level": "Warning",
-      "warningLevel": 1,
-      "message": "Package 'SixLabors.ImageSharp' 3.1.10 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rxmq-m78w-7wmc",
-      "libraryId": "SixLabors.ImageSharp",
-      "targetGraphs": [
-        "net6.0"
-      ]
-    }
-  ]
+  }
 }

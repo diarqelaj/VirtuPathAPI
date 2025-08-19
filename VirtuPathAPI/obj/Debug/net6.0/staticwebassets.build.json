@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "O5EJcORw0jfQhovCj86/NYkRcCShoG7g+7extBhqV1M=",
+  "Hash": "Pz28KEsEbFKMbUASrZIuSY2TMifuLL5I6PJckjATxOU=",
   "Source": "VirtuPathAPI",
   "BasePath": "_content/VirtuPathAPI",
   "Mode": "Default",
@@ -8,1148 +8,200 @@
   "ReferencedProjectsConfiguration": [],
   "DiscoveryPatterns": [
     {
-      "Name": "VirtuPathAPI/wwwroot",
+      "Name": "VirtuPathAPI\\wwwroot",
       "Source": "VirtuPathAPI",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
       "Pattern": "**"
     }
   ],
   "Assets": [
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\cover-images\\cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3#[.{fingerprint}]?.webp",
+      "RelativePath": "cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "10aj9485at",
-      "Integrity": "n03TxS36XlXoZf6FLBeR9Mylkq7jrkVmc/Spypj0HCk=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp"
+      "OriginalItemSpec": "wwwroot\\cover-images\\cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\post-images\\65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0#[.{fingerprint}]?.webp",
+      "RelativePath": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "kokr12nl52",
-      "Integrity": "jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
+      "OriginalItemSpec": "wwwroot\\post-images\\65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\post-images\\b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c#[.{fingerprint}]?.png",
+      "RelativePath": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "y3xzs9tzt7",
-      "Integrity": "on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
+      "OriginalItemSpec": "wwwroot\\post-images\\b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd#[.{fingerprint}]?.jpg",
+      "RelativePath": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "hae0r1f5ys",
-      "Integrity": "WReKh0KJ9mEx6A0UIQJkHqu66wATxal4zoMOHBA+0/k=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg"
+      "OriginalItemSpec": "wwwroot\\profile-pictures\\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\27a63623-4bb1-468e-90b7-64d2962236a8.webp",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8#[.{fingerprint}]?.webp",
+      "RelativePath": "profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "hmmoc4m2n4",
-      "Integrity": "d3sxjxj+MH3g2sXdrsoZuMTdXZkHaWOk3BiGz6+/xoI=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp"
+      "OriginalItemSpec": "wwwroot\\profile-pictures\\27a63623-4bb1-468e-90b7-64d2962236a8.webp"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251#[.{fingerprint}]?.jpg",
+      "RelativePath": "profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "420t35ma00",
-      "Integrity": "dGMPNpQn3jHIOmEoo2frYGATbmhfOgS1+nCvScCHiEo=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
+      "OriginalItemSpec": "wwwroot\\profile-pictures\\55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d#[.{fingerprint}]?.webp",
+      "RelativePath": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "1llua277dm",
-      "Integrity": "xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp"
+      "OriginalItemSpec": "wwwroot\\profile-pictures\\650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733#[.{fingerprint}]?.jpg",
+      "RelativePath": "profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "35j6g7hhec",
-      "Integrity": "mX3WxtkwwIz6CGUME4nv6dZeWDlTuUdUHXnjNQ7sOGo=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg"
+      "OriginalItemSpec": "wwwroot\\profile-pictures\\b1768b1b-06c4-4103-bd50-52ecfe728733.jpg"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/sso/login-status.html",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\sso\\login-status.html",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "sso/login-status#[.{fingerprint}]?.html",
+      "RelativePath": "sso/login-status.html",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "wbzsf07yxz",
-      "Integrity": "3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/sso/login-status.html"
+      "OriginalItemSpec": "wwwroot\\sso\\login-status.html"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\uploads\\screenshots\\305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test#[.{fingerprint}]?.png",
+      "RelativePath": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "gdijcu7zq7",
-      "Integrity": "PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png"
+      "OriginalItemSpec": "wwwroot\\uploads\\screenshots\\305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png"
     },
     {
-      "Identity": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\uploads\\screenshots\\d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
       "SourceId": "VirtuPathAPI",
       "SourceType": "Discovered",
-      "ContentRoot": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
       "BasePath": "_content/VirtuPathAPI",
-      "RelativePath": "uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test#[.{fingerprint}]?.png",
+      "RelativePath": "uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
       "AssetKind": "All",
       "AssetMode": "All",
       "AssetRole": "Primary",
-      "AssetMergeBehavior": "",
-      "AssetMergeSource": "",
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "gdijcu7zq7",
-      "Integrity": "PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
-      "OriginalItemSpec": "wwwroot/uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png"
-    }
-  ],
-  "Endpoints": [
-    {
-      "Route": "cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.10aj9485at.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "441146"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"n03TxS36XlXoZf6FLBeR9Mylkq7jrkVmc/Spypj0HCk=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Tue, 22 Jul 2025 11:49:55 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "10aj9485at"
-        },
-        {
-          "Name": "label",
-          "Value": "cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-n03TxS36XlXoZf6FLBeR9Mylkq7jrkVmc/Spypj0HCk="
-        }
-      ]
-    },
-    {
-      "Route": "cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/cover-images/cb4d6e02-e583-4b15-8ef8-8bb0d2b0c3b3.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "441146"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"n03TxS36XlXoZf6FLBeR9Mylkq7jrkVmc/Spypj0HCk=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Tue, 22 Jul 2025 11:49:55 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-n03TxS36XlXoZf6FLBeR9Mylkq7jrkVmc/Spypj0HCk="
-        }
-      ]
-    },
-    {
-      "Route": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.kokr12nl52.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "305244"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "kokr12nl52"
-        },
-        {
-          "Name": "label",
-          "Value": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8="
-        }
-      ]
-    },
-    {
-      "Route": "post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/65e60a9e-afb6-4c53-bffb-fb0634356ec0.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "305244"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-jMWapyA01a6IkDuZs5Lm7FqE4Yo8ngWgiUegDiaA4u8="
-        }
-      ]
-    },
-    {
-      "Route": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "156622"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/png"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ="
-        }
-      ]
-    },
-    {
-      "Route": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.y3xzs9tzt7.png",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "156622"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/png"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "y3xzs9tzt7"
-        },
-        {
-          "Name": "label",
-          "Value": "post-images/b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-on34KY0KZHumioAl3gGr5S4SB0RZ8AwQYJobmgLZ3PQ="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.hae0r1f5ys.jpg",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "276875"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/jpeg"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"WReKh0KJ9mEx6A0UIQJkHqu66wATxal4zoMOHBA+0/k=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Mon, 05 May 2025 13:09:59 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "hae0r1f5ys"
-        },
-        {
-          "Name": "label",
-          "Value": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-WReKh0KJ9mEx6A0UIQJkHqu66wATxal4zoMOHBA+0/k="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "276875"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/jpeg"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"WReKh0KJ9mEx6A0UIQJkHqu66wATxal4zoMOHBA+0/k=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Mon, 05 May 2025 13:09:59 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-WReKh0KJ9mEx6A0UIQJkHqu66wATxal4zoMOHBA+0/k="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.hmmoc4m2n4.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "128210"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"d3sxjxj+MH3g2sXdrsoZuMTdXZkHaWOk3BiGz6+/xoI=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Tue, 22 Jul 2025 11:34:49 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "hmmoc4m2n4"
-        },
-        {
-          "Name": "label",
-          "Value": "profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-d3sxjxj+MH3g2sXdrsoZuMTdXZkHaWOk3BiGz6+/xoI="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/27a63623-4bb1-468e-90b7-64d2962236a8.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "128210"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"d3sxjxj+MH3g2sXdrsoZuMTdXZkHaWOk3BiGz6+/xoI=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Tue, 22 Jul 2025 11:34:49 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-d3sxjxj+MH3g2sXdrsoZuMTdXZkHaWOk3BiGz6+/xoI="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.420t35ma00.jpg",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "306125"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/jpeg"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"dGMPNpQn3jHIOmEoo2frYGATbmhfOgS1+nCvScCHiEo=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Mon, 05 May 2025 15:11:13 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "420t35ma00"
-        },
-        {
-          "Name": "label",
-          "Value": "profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-dGMPNpQn3jHIOmEoo2frYGATbmhfOgS1+nCvScCHiEo="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/55d067d0-9101-4c21-bfc1-26fdeba58251.jpg",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "306125"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/jpeg"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"dGMPNpQn3jHIOmEoo2frYGATbmhfOgS1+nCvScCHiEo=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Mon, 05 May 2025 15:11:13 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-dGMPNpQn3jHIOmEoo2frYGATbmhfOgS1+nCvScCHiEo="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.1llua277dm.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "219464"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "1llua277dm"
-        },
-        {
-          "Name": "label",
-          "Value": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/650903f0-8352-466e-8e8e-5fc7fe39cc0d.webp",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "219464"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/webp"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sun, 13 Jul 2025 14:57:09 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-xYoNvaYvCaw2pN76+JPMoT61VIUuln626jfJcd1VzjU="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.35j6g7hhec.jpg",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "54709"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/jpeg"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"mX3WxtkwwIz6CGUME4nv6dZeWDlTuUdUHXnjNQ7sOGo=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 03 May 2025 23:54:27 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "35j6g7hhec"
-        },
-        {
-          "Name": "label",
-          "Value": "profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-mX3WxtkwwIz6CGUME4nv6dZeWDlTuUdUHXnjNQ7sOGo="
-        }
-      ]
-    },
-    {
-      "Route": "profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/profile-pictures/b1768b1b-06c4-4103-bd50-52ecfe728733.jpg",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "54709"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/jpeg"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"mX3WxtkwwIz6CGUME4nv6dZeWDlTuUdUHXnjNQ7sOGo=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 03 May 2025 23:54:27 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-mX3WxtkwwIz6CGUME4nv6dZeWDlTuUdUHXnjNQ7sOGo="
-        }
-      ]
-    },
-    {
-      "Route": "sso/login-status.html",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/sso/login-status.html",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "855"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/html"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Fri, 18 Jul 2025 02:44:20 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "no-cache"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs="
-        }
-      ]
-    },
-    {
-      "Route": "sso/login-status.wbzsf07yxz.html",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/sso/login-status.html",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "855"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/html"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Fri, 18 Jul 2025 02:44:20 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "wbzsf07yxz"
-        },
-        {
-          "Name": "label",
-          "Value": "sso/login-status.html"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-3AAAtX56tpl6GsaL7MEyYDX9GDd/5xhJqQpAQUq8rNs="
-        }
-      ]
-    },
-    {
-      "Route": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.gdijcu7zq7.png",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "29022"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/png"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 03 May 2025 15:35:14 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "gdijcu7zq7"
-        },
-        {
-          "Name": "label",
-          "Value": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM="
-        }
-      ]
-    },
-    {
-      "Route": "uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/305ae05f-87c3-4982-ba4f-87a0b292ab46_test.png",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "29022"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/png"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 03 May 2025 15:35:14 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM="
-        }
-      ]
-    },
-    {
-      "Route": "uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.gdijcu7zq7.png",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "29022"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/png"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 03 May 2025 15:34:04 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "gdijcu7zq7"
-        },
-        {
-          "Name": "label",
-          "Value": "uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM="
-        }
-      ]
-    },
-    {
-      "Route": "uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
-      "AssetFile": "/home/pluto/Desktop/VirtuPathAPI/VirtuPathAPI/wwwroot/uploads/screenshots/d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "29022"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "image/png"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Sat, 03 May 2025 15:34:04 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=3600, must-revalidate"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "integrity",
-          "Value": "sha256-PCgdFZ07/si8NmRKCr9kDCpsQmEuqWhrrNJUygoEAzM="
-        }
-      ]
+      "OriginalItemSpec": "wwwroot\\uploads\\screenshots\\d3d47098-e72b-4483-b666-83aa3a8cf66d_test.png"
     }
   ]
 }

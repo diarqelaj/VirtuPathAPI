@@ -1,48 +1,42 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using VirtuPathAPI.Models;
 
 namespace VirtuPathAPI.Models
 {
     public class TaskCompletionContext : DbContext
     {
-        public TaskCompletionContext(DbContextOptions<TaskCompletionContext> options)
-            : base(options)
-        {
-        }
+        public TaskCompletionContext(DbContextOptions<TaskCompletionContext> options) : base(options) {}
 
-        public DbSet<TaskCompletion> TaskCompletions { get; set; }
-        public DbSet<UserSubscription> UserSubscriptions { get; set; }
-        public DbSet<DailyTask> DailyTasks { get; set; }
-        public DbSet<PerformanceReview> PerformanceReviews { get; set; }
+        public DbSet<TaskCompletion> TaskCompletions { get; set; } = null!;
+        public DbSet<UserSubscription> UserSubscriptions { get; set; } = null!;
+        public DbSet<DailyTask> DailyTasks { get; set; } = null!;
+        public DbSet<PerformanceReview> PerformanceReviews { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // TaskCompletion
-            modelBuilder.Entity<TaskCompletion>(entity =>
+            modelBuilder.Entity<TaskCompletion>(e =>
             {
-                entity.ToTable("TaskCompletion");
-                entity.HasKey(tc => tc.CompletionID);
+                e.ToTable("TaskCompletion");
+                e.HasKey(tc => tc.CompletionID);
             });
 
-            // UserSubscription
-            modelBuilder.Entity<UserSubscription>(entity =>
+            modelBuilder.Entity<UserSubscription>(e =>
             {
-                entity.ToTable("UserSubscriptions");
-                entity.HasKey(us => us.SubscriptionID); // Assuming SubscriptionID is the PK
+                e.ToTable("UserSubscriptions");
+                e.HasKey(us => us.Id);                // was SubscriptionID
+                e.Property(us => us.Plan)
+                 .HasColumnName("Plan");              // reserved word mapping
             });
 
-            // DailyTask
-            modelBuilder.Entity<DailyTask>(entity =>
+            modelBuilder.Entity<DailyTask>(e =>
             {
-                entity.ToTable("DailyTasks");
-                entity.HasKey(dt => dt.TaskID);
+                e.ToTable("DailyTasks");
+                e.HasKey(dt => dt.TaskID);
             });
 
-            // PerformanceReview
-            modelBuilder.Entity<PerformanceReview>(entity =>
+            modelBuilder.Entity<PerformanceReview>(e =>
             {
-                entity.ToTable("PerformanceReviews");
-                entity.HasKey(pr => pr.ReviewID);
+                e.ToTable("PerformanceReviews");
+                e.HasKey(pr => pr.ReviewID);
             });
 
             base.OnModelCreating(modelBuilder);
