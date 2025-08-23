@@ -18,7 +18,8 @@ namespace VirtuPathAPI.Models
         // Post content
         public string Content { get; set; } = string.Empty;
 
-        public string? ImageUrl { get; set; }      // ← new
+        public string? ImageUrl { get; set; }
+        public string? ImagePublicId { get; set; }     // ← add this// ← new
         // Timestamp
         public DateTime CreatedAt { get; set; }
 

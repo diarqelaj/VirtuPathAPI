@@ -13,7 +13,6 @@ namespace VirtuPathAPI.Models
         public DbSet<User> Users { get; set; }
         public DbSet<CommentReaction> CommentReactions { get; set; }
 
-
         protected override void OnModelCreating(ModelBuilder mb)
         {
             // Map Users → dbo.Users
@@ -61,6 +60,8 @@ namespace VirtuPathAPI.Models
                   .HasForeignKey(c => c.ParentCommentId)
                   .OnDelete(DeleteBehavior.NoAction);
             });
+
+            // CommentReactions
             mb.Entity<CommentReaction>(eb =>
             {
                 eb.ToTable("CommentReactions");
