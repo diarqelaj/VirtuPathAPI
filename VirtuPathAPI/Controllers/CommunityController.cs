@@ -1,17 +1,14 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using VirtuPathAPI.Models;
-using SixLabors.ImageSharp.Formats.Webp;
-
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Webp;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -21,34 +18,37 @@ namespace VirtuPathAPI.Controllers
     {
         private readonly CommunityPostContext _postContext;
         private readonly UserContext _userContext;
-        private readonly IWebHostEnvironment _env;
+        private readonly Cloudinary? _cloud; // optional
 
         public CommunityController(
             CommunityPostContext postContext,
             UserContext userContext,
-            IWebHostEnvironment env)
+            Cloudinary? cloud // registered in Program.cs when CLOUDINARY_URL exists
+        )
         {
             _postContext = postContext;
             _userContext = userContext;
-            _env = env;
+            _cloud = cloud;
         }
 
-        // GET api/community/members
+        // ---------------- Members ----------------
         [HttpGet("members")]
         public async Task<IActionResult> GetMembers()
         {
             var members = await _userContext.Users
-                .Select(u => new {
+                .Select(u => new
+                {
                     id = u.UserID,
                     username = u.Username,
                     avatar = u.ProfilePictureUrl,
                     bio = u.Bio
                 })
                 .ToListAsync();
+
             return Ok(members);
         }
 
-        // GET api/community/posts
+        // ---------------- Posts (list) ----------------
         [HttpGet("posts")]
         public async Task<IActionResult> GetPosts()
         {
@@ -58,48 +58,49 @@ namespace VirtuPathAPI.Controllers
                 .Include(p => p.Comments).ThenInclude(c => c.Replies).ThenInclude(r => r.User)
                 .Include(p => p.Reactions)
                 .OrderByDescending(p => p.CreatedAt)
-                .Select(p => new {
+                .Select(p => new
+                {
                     id = p.PostId,
                     content = p.Content,
-                    imageUrl = p.ImageUrl,
+                    imageUrl = p.ImageUrl,                           // can be Cloudinary or legacy "/post-images/.."
+                    imagePublicId = TryExtractPublicId(p.ImageUrl),  // FE can use this for transformed delivery
                     createdAt = p.CreatedAt,
                     author = new
                     {
-                        id = p.Author.UserID,
+                        id = p.Author!.UserID,
                         username = p.Author.Username,
                         avatar = p.Author.ProfilePictureUrl
                     },
                     comments = p.Comments
-    .Where(c => c.ParentCommentId == null)
-    .OrderBy(c => c.CreatedAt)
-    .Select(c => new
-    {
-        id = c.CommentId,
-        content = c.Content,
-        createdAt = c.CreatedAt,
-        author = new
-        {
-            id = c.User.UserID,
-            username = c.User.Username,
-            avatar = c.User.ProfilePictureUrl
-        },
-        likeCount = _postContext.CommentReactions.Count(r => r.CommentId == c.CommentId),
-        replies = c.Replies
-            .OrderBy(r => r.CreatedAt)
-            .Select(r => new
-            {
-                id = r.CommentId,
-                content = r.Content,
-                createdAt = r.CreatedAt,
-                author = new
-                {
-                    id = r.User.UserID,
-                    username = r.User.Username,
-                    avatar = r.User.ProfilePictureUrl
-                }
-            })
-    }),
-
+                        .Where(c => c.ParentCommentId == null)
+                        .OrderBy(c => c.CreatedAt)
+                        .Select(c => new
+                        {
+                            id = c.CommentId,
+                            content = c.Content,
+                            createdAt = c.CreatedAt,
+                            author = new
+                            {
+                                id = c.User!.UserID,
+                                username = c.User.Username,
+                                avatar = c.User.ProfilePictureUrl
+                            },
+                            likeCount = _postContext.CommentReactions.Count(r => r.CommentId == c.CommentId),
+                            replies = c.Replies
+                                .OrderBy(r => r.CreatedAt)
+                                .Select(r => new
+                                {
+                                    id = r.CommentId,
+                                    content = r.Content,
+                                    createdAt = r.CreatedAt,
+                                    author = new
+                                    {
+                                        id = r.User!.UserID,
+                                        username = r.User.Username,
+                                        avatar = r.User.ProfilePictureUrl
+                                    }
+                                })
+                        }),
                     likeCount = p.Reactions.Count(r => r.Type == ReactionType.Like),
                     dislikeCount = p.Reactions.Count(r => r.Type == ReactionType.Dislike)
                 })
@@ -108,83 +109,135 @@ namespace VirtuPathAPI.Controllers
             return Ok(posts);
         }
 
+        // ---------------- Comments: like/unlike ----------------
         [HttpPost("comments/{commentId}/like")]
-public async Task<IActionResult> LikeComment(int commentId)
-{
-    var userId = HttpContext.Session.GetInt32("UserID");
-    if (userId == null) return Unauthorized();
-
-    var existing = await _postContext.CommentReactions
-        .FirstOrDefaultAsync(r => r.CommentId == commentId && r.UserID == userId);
-
-    if (existing != null)
-    {
-        // unlike
-        _postContext.CommentReactions.Remove(existing);
-    }
-    else
-    {
-        _postContext.CommentReactions.Add(new CommentReaction
-        {
-            CommentId = commentId,
-            UserID = userId.Value,
-            CreatedAt = DateTime.UtcNow
-        });
-    }
-
-    await _postContext.SaveChangesAsync();
-
-    var likeCount = await _postContext.CommentReactions.CountAsync(r => r.CommentId == commentId);
-    return Ok(new { likeCount });
-}
-
-        // POST api/community/posts
-        [HttpPost("posts")]
-        public async Task<IActionResult> CreatePost([FromForm] CreatePostWithImageRequest req)
+        public async Task<IActionResult> LikeComment(int commentId)
         {
             var userId = HttpContext.Session.GetInt32("UserID");
-            if (userId == null)
-                return Unauthorized(new { error = "Must be logged in." });
+            if (userId == null) return Unauthorized();
 
-            if (string.IsNullOrWhiteSpace(req.Content) && req.Image == null)
-                return BadRequest(new { error = "Text or image required." });
+            var existing = await _postContext.CommentReactions
+                .FirstOrDefaultAsync(r => r.CommentId == commentId && r.UserID == userId);
+
+            if (existing != null)
+            {
+                _postContext.CommentReactions.Remove(existing);
+            }
+            else
+            {
+                _postContext.CommentReactions.Add(new CommentReaction
+                {
+                    CommentId = commentId,
+                    UserID = userId.Value,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+
+            await _postContext.SaveChangesAsync();
+
+            var likeCount = await _postContext.CommentReactions
+                .CountAsync(r => r.CommentId == commentId);
+
+            return Ok(new { likeCount });
+        }
+
+        // ---------------- Posts: create (JSON or multipart fallback) ----------------
+
+        // Preferred JSON body: { content, imageUrl? }
+        public class CreatePostJsonRequest
+        {
+            public string? Content { get; set; }
+            public string? ImageUrl { get; set; }        // e.g. https://res.cloudinary.com/...
+            public string? ImagePublicId { get; set; }   // optional, not persisted
+        }
+
+        // Legacy multipart fallback
+        public class CreatePostMultipartRequest
+        {
+            [FromForm(Name = "content")] public string? Content { get; set; }
+            [FromForm(Name = "image")] public IFormFile? Image { get; set; }
+        }
+
+        /// <summary>
+        /// Preferred: application/json → { content, imageUrl }
+        /// - If imageUrl is a Cloudinary URL, we normalize it to a .webp delivery URL.
+        /// </summary>
+        [HttpPost("posts")]
+        [Consumes("application/json")]
+        public async Task<IActionResult> CreatePostJson([FromBody] CreatePostJsonRequest body)
+        {
+            var userId = HttpContext.Session.GetInt32("UserID");
+            if (userId == null) return Unauthorized(new { error = "Must be logged in." });
+
+            if (string.IsNullOrWhiteSpace(body?.Content) && string.IsNullOrWhiteSpace(body?.ImageUrl))
+                return BadRequest(new { error = "Either content or imageUrl is required." });
 
             var post = new CommunityPost
             {
                 UserID = userId.Value,
-                Content = req.Content?.Trim() ?? string.Empty,
+                Content = body?.Content?.Trim() ?? "",
+                ImageUrl = NormalizeToWebp(string.IsNullOrWhiteSpace(body?.ImageUrl) ? null : body!.ImageUrl!.Trim()),
                 CreatedAt = DateTime.UtcNow
             };
 
-            if (req.Image != null && req.Image.Length > 0)
+            _postContext.CommunityPosts.Add(post);
+            await _postContext.SaveChangesAsync();
+
+            return Ok(new
             {
-                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-                var ext = Path.GetExtension(req.Image.FileName).ToLower();
-                if (!allowedExtensions.Contains(ext))
-                    return BadRequest(new { error = "Only .jpg, .jpeg, .png, and .webp allowed." });
+                id = post.PostId,
+                content = post.Content,
+                imageUrl = post.ImageUrl,
+                imagePublicId = TryExtractPublicId(post.ImageUrl),
+                createdAt = post.CreatedAt
+            });
+        }
 
-                if (req.Image.Length > 5 * 1024 * 1024)
-                    return BadRequest(new { error = "Image must be under 5MB." });
+        /// <summary>
+        /// Legacy: multipart/form-data (upload file directly to server -> Cloudinary).
+        /// We store as WebP in Cloudinary.
+        /// </summary>
+        [HttpPost("posts/file")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> CreatePostMultipart([FromForm] CreatePostMultipartRequest form)
+        {
+            var userId = HttpContext.Session.GetInt32("UserID");
+            if (userId == null) return Unauthorized(new { error = "Must be logged in." });
 
-                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "post-images");
-                if (!Directory.Exists(uploadsFolder))
-                    Directory.CreateDirectory(uploadsFolder);
+            if (string.IsNullOrWhiteSpace(form?.Content) && (form?.Image == null || form.Image.Length == 0))
+                return BadRequest(new { error = "Either content or image file is required." });
 
-                var webpFileName = $"{Guid.NewGuid()}.webp";
-                var webpPath = Path.Combine(uploadsFolder, webpFileName);
+            var post = new CommunityPost
+            {
+                UserID = userId.Value,
+                Content = form?.Content?.Trim() ?? "",
+                CreatedAt = DateTime.UtcNow
+            };
 
-                using (var image = await Image.LoadAsync(req.Image.OpenReadStream()))
+            if (form?.Image != null && form.Image.Length > 0)
+            {
+                if (_cloud == null)
+                    return StatusCode(500, new { error = "Cloudinary is not configured on the server." });
+
+                var allowedExt = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+                var ext = Path.GetExtension(form.Image.FileName).ToLowerInvariant();
+                if (!allowedExt.Contains(ext))
+                    return BadRequest(new { error = "Invalid file type." });
+
+                var uploadParams = new ImageUploadParams
                 {
-                    image.Mutate(x => x.Resize(new ResizeOptions
-                    {
-                        Mode = ResizeMode.Max,
-                        Size = new Size(1080, 1080)
-                    }));
+                    File = new FileDescription(form.Image.FileName, form.Image.OpenReadStream()),
+                    Folder = "virtupath/community/posts",
+                    Format = "webp", // force webp storage
+                    Transformation = new Transformation()
+                        .Width(1280).Height(720).Crop("limit").Quality("auto")
+                };
 
-                    await image.SaveAsync(webpPath, new WebpEncoder { Quality = 85 });
-                }
+                var result = await _cloud.UploadAsync(uploadParams);
+                if (result.StatusCode != System.Net.HttpStatusCode.OK)
+                    return StatusCode(500, new { error = "Cloudinary upload failed." });
 
-                post.ImageUrl = $"/post-images/{webpFileName}";
+                post.ImageUrl = result.SecureUrl.ToString(); // ends with .webp
             }
 
             _postContext.CommunityPosts.Add(post);
@@ -195,13 +248,18 @@ public async Task<IActionResult> LikeComment(int commentId)
                 id = post.PostId,
                 content = post.Content,
                 imageUrl = post.ImageUrl,
+                imagePublicId = TryExtractPublicId(post.ImageUrl),
                 createdAt = post.CreatedAt
             });
         }
 
+        // ---------------- Comments: add ----------------
+        public class AddCommentRequest
+        {
+            public string? Content { get; set; }
+            public int? ParentCommentId { get; set; }
+        }
 
-
-        // POST api/community/posts/{postId}/comments
         [HttpPost("posts/{postId}/comments")]
         public async Task<IActionResult> AddComment(int postId, [FromBody] AddCommentRequest req)
         {
@@ -209,6 +267,9 @@ public async Task<IActionResult> LikeComment(int commentId)
             if (userId == null) return Unauthorized(new { error = "Must be logged in." });
             if (string.IsNullOrWhiteSpace(req.Content))
                 return BadRequest(new { error = "Content required." });
+
+            var postExists = await _postContext.CommunityPosts.AnyAsync(p => p.PostId == postId);
+            if (!postExists) return NotFound(new { error = "Post not found." });
 
             var comment = new Comment
             {
@@ -218,6 +279,7 @@ public async Task<IActionResult> LikeComment(int commentId)
                 ParentCommentId = req.ParentCommentId,
                 CreatedAt = DateTime.UtcNow
             };
+
             _postContext.Comments.Add(comment);
             await _postContext.SaveChangesAsync();
 
@@ -229,36 +291,13 @@ public async Task<IActionResult> LikeComment(int commentId)
                 parentComment = comment.ParentCommentId
             });
         }
-        [HttpDelete("posts/{postId}")]
-        public async Task<IActionResult> DeletePost(int postId)
+
+        // ---------------- Reactions ----------------
+        public class ReactionRequest
         {
-            var userId = HttpContext.Session.GetInt32("UserID");
-            if (userId == null)
-                return Unauthorized(new { error = "Must be logged in." });
-
-            var post = await _postContext.CommunityPosts.FindAsync(postId);
-            if (post == null)
-                return NotFound(new { error = "Post not found." });
-
-            if (post.UserID != userId)
-                return Forbid("You can only delete your own posts.");
-
-            // Delete post image from disk if it exists
-            if (!string.IsNullOrEmpty(post.ImageUrl))
-            {
-                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", post.ImageUrl.TrimStart('/'));
-                if (System.IO.File.Exists(filePath))
-                    System.IO.File.Delete(filePath);
-            }
-
-            _postContext.CommunityPosts.Remove(post);
-            await _postContext.SaveChangesAsync();
-
-            return Ok(new { message = "Post deleted." });
+            public ReactionType Type { get; set; }
         }
 
-
-        // POST api/community/posts/{postId}/reactions
         [HttpPost("posts/{postId}/reactions")]
         public async Task<IActionResult> React(int postId, [FromBody] ReactionRequest req)
         {
@@ -269,7 +308,9 @@ public async Task<IActionResult> LikeComment(int commentId)
                 .FirstOrDefaultAsync(r => r.PostId == postId && r.UserID == userId.Value);
 
             if (existing != null && existing.Type == req.Type)
+            {
                 _postContext.Reactions.Remove(existing);
+            }
             else if (existing != null)
             {
                 existing.Type = req.Type;
@@ -288,28 +329,123 @@ public async Task<IActionResult> LikeComment(int commentId)
 
             await _postContext.SaveChangesAsync();
 
-            var likeCount = await _postContext.Reactions.CountAsync(r => r.PostId == postId && r.Type == ReactionType.Like);
-            var dislikeCount = await _postContext.Reactions.CountAsync(r => r.PostId == postId && r.Type == ReactionType.Dislike);
+            var likeCount = await _postContext.Reactions
+                .CountAsync(r => r.PostId == postId && r.Type == ReactionType.Like);
+            var dislikeCount = await _postContext.Reactions
+                .CountAsync(r => r.PostId == postId && r.Type == ReactionType.Dislike);
 
             return Ok(new { likeCount, dislikeCount });
         }
 
-        // DTOs
-        public class CreatePostWithImageRequest
+        // ---------------- Delete Post (author or admin) ----------------
+        [HttpDelete("posts/{postId}")]
+        public async Task<IActionResult> DeletePost(int postId)
         {
-            [FromForm(Name = "content")] public string? Content { get; set; }
-            [FromForm(Name = "image")] public IFormFile? Image { get; set; }
+            var sid = HttpContext.Session.GetInt32("UserID");
+            if (sid == null) return Unauthorized(new { error = "Must be logged in." });
+
+            var me = await _userContext.Users
+                .Where(u => u.UserID == sid.Value)
+                .Select(u => new { u.UserID, u.IsOfficial /* TODO: swap to u.IsAdmin if you have it */ })
+                .FirstOrDefaultAsync();
+
+            if (me == null) return Unauthorized(new { error = "User not found." });
+
+            var post = await _postContext.CommunityPosts.FindAsync(postId);
+            if (post == null) return NotFound(new { error = "Post not found." });
+
+            var isAdmin = me.IsOfficial;           // TODO: swap to IsAdmin if available
+            var isAuthor = (post.UserID == me.UserID);
+            if (!isAuthor && !isAdmin)
+                return Forbid("Only the author or an admin can delete this post.");
+
+            // Try Cloudinary deletion if possible
+            if (_cloud != null && !string.IsNullOrWhiteSpace(post.ImageUrl) && IsCloudinaryUrl(post.ImageUrl))
+            {
+                var publicId = TryExtractPublicId(post.ImageUrl!);
+                if (!string.IsNullOrWhiteSpace(publicId))
+                {
+                    try { await _cloud.DestroyAsync(new DeletionParams(publicId)); }
+                    catch { /* don't fail deletion if cloud destroy fails */ }
+                }
+            }
+
+            // Try to remove legacy local file if needed
+            if (!string.IsNullOrWhiteSpace(post.ImageUrl) && post.ImageUrl!.StartsWith("/"))
+            {
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", post.ImageUrl!.TrimStart('/'));
+                if (System.IO.File.Exists(filePath))
+                {
+                    try { System.IO.File.Delete(filePath); } catch { /* ignore */ }
+                }
+            }
+
+            _postContext.CommunityPosts.Remove(post);
+            await _postContext.SaveChangesAsync();
+
+            return Ok(new { message = "Post deleted." });
         }
 
-        public class AddCommentRequest
+        // ---------------- Helpers ----------------
+        private static bool IsCloudinaryUrl(string? url)
         {
-            public string? Content { get; set; }
-            public int? ParentCommentId { get; set; }
+            if (string.IsNullOrWhiteSpace(url)) return false;
+            return url.IndexOf("res.cloudinary.com/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        public class ReactionRequest
+        /// <summary>
+        /// Extract Cloudinary public_id from a secure URL.
+        /// Example:
+        ///   https://res.cloudinary.com/<cloud>/image/upload/v1724200000/folder/name/abc123.webp
+        ///   -> folder/name/abc123
+        /// </summary>
+        private static string? TryExtractPublicId(string? secureUrl)
         {
-            public ReactionType Type { get; set; }
+            try
+            {
+                if (string.IsNullOrWhiteSpace(secureUrl)) return null;
+
+                var uri = new Uri(secureUrl);
+                var path = uri.AbsolutePath; // /<cloudinary_path>/image/upload/.../<publicid>.<ext>
+                if (path.StartsWith("/")) path = path.Substring(1);
+
+                // Works for both image and video resources
+                var markerIdx = path.IndexOf("/image/upload/", StringComparison.OrdinalIgnoreCase);
+                if (markerIdx < 0) markerIdx = path.IndexOf("/video/upload/", StringComparison.OrdinalIgnoreCase);
+                if (markerIdx < 0) return null;
+
+                var after = path.Substring(markerIdx + "/image/upload/".Length); // ok even if it was /video/upload/
+                after = Regex.Replace(after, @"^v\d+\/", "");        // drop version folder
+                after = Regex.Replace(after, @"\.[a-zA-Z0-9]+$", ""); // drop extension
+                return after;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// If it's a Cloudinary URL:
+        ///  - leave as-is if already .webp
+        ///  - otherwise rewrite to a clean .webp delivery URL for the same public_id
+        /// If not Cloudinary, return as-is.
+        /// </summary>
+        private string? NormalizeToWebp(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+
+            if (!IsCloudinaryUrl(url)) return url;
+            if (url.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) return url;
+
+            var publicId = TryExtractPublicId(url);
+            if (string.IsNullOrWhiteSpace(publicId)) return url;
+
+            var cloudName = _cloud?.Api?.Account?.Cloud;
+            if (string.IsNullOrWhiteSpace(cloudName)) return url;
+
+            // Clean, no-transform, .webp delivery URL.
+            return $"https://res.cloudinary.com/{cloudName}/image/upload/{publicId}.webp";
         }
     }
 }
