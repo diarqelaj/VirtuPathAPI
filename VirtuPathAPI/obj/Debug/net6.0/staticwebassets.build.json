@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "Pz28KEsEbFKMbUASrZIuSY2TMifuLL5I6PJckjATxOU=",
+  "Hash": "jVTqEWjF+Dv5q+ateKXjrmYADf32rgFtEsy0J/yEIaA=",
   "Source": "VirtuPathAPI",
   "BasePath": "_content/VirtuPathAPI",
   "Mode": "Default",
@@ -66,6 +66,23 @@
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
       "OriginalItemSpec": "wwwroot\\post-images\\b720b92a-4807-4b63-a62d-1a6c57eb5c1c.png"
+    },
+    {
+      "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\post-images\\c80bd1a6-070a-4a7e-97d4-fe529554c1f6.webp",
+      "SourceId": "VirtuPathAPI",
+      "SourceType": "Discovered",
+      "ContentRoot": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\",
+      "BasePath": "_content/VirtuPathAPI",
+      "RelativePath": "post-images/c80bd1a6-070a-4a7e-97d4-fe529554c1f6.webp",
+      "AssetKind": "All",
+      "AssetMode": "All",
+      "AssetRole": "Primary",
+      "RelatedAsset": "",
+      "AssetTraitName": "",
+      "AssetTraitValue": "",
+      "CopyToOutputDirectory": "Never",
+      "CopyToPublishDirectory": "PreserveNewest",
+      "OriginalItemSpec": "wwwroot\\post-images\\c80bd1a6-070a-4a7e-97d4-fe529554c1f6.webp"
     },
     {
       "Identity": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\wwwroot\\profile-pictures\\0178dbca-881d-4d29-8d5c-5f73ba6ad6cd.jpg",
