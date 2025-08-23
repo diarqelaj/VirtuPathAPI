@@ -205,10 +205,6 @@ builder.Services.AddAuthorization(opts =>
     opts.AddPolicy("Admin", p => p.RequireClaim(ClaimTypes.Role, "Admin"));
 });
 
-Console.WriteLine("CLOUDINARY_URL=" + Environment.GetEnvironmentVariable("CLOUDINARY_URL"));
-
-
-
 //────────────────────────────────────────────────────────────────────────────
 // 7) MVC / SWAGGER
 //────────────────────────────────────────────────────────────────────────────
