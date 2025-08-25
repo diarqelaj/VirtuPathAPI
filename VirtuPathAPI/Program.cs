@@ -377,15 +377,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Endpoints
 app.MapGet("/", () => Results.Ok("API is up"));
-// keep the root health for direct Cloud Run checks
 app.MapGet("/health", () => Results.Ok("OK"));
-// NEW: add the /api health for LB path-routing
-app.MapGet("/api/health", () => Results.Ok("OK"));
-
 app.MapControllers();
-
-// CHANGE: move hub under /api so the LB path works for SignalR
-app.MapHub<ChatHub>("/api/chathub");
+app.MapHub<ChatHub>("/chathub");
 
 app.Run();
