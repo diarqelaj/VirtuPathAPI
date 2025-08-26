@@ -25,7 +25,7 @@ using System.Collections.Generic;
 using VirtuPathAPI.Utilities;
 using VirtuPathAPI.Config;
 using VirtuPathAPI.Services;
-
+using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,9 +33,20 @@ var builder = WebApplication.CreateBuilder(args);
 // 0) CONFIG / ENV / CORS
 //────────────────────────────────────────────────────────────────────────────
 DotEnv.Load(new DotEnvOptions(probeForEnv: true, ignoreExceptions: true));
-// If that still errors, just: DotEnv.Load();
-
 builder.Configuration.AddEnvironmentVariables();
+
+// 🔇 Server logging: silence everything outside Development
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.SetMinimumLevel(LogLevel.None);
+
+    // (Optional) keep the filters for clarity if you ever re-add providers
+    builder.Logging.AddFilter("Microsoft", LogLevel.None);
+    builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.None);
+    builder.Logging.AddFilter("System", LogLevel.None);
+    builder.Logging.AddFilter("Default", LogLevel.None);
+}
 
 var apiBase = Environment.GetEnvironmentVariable("NEXT_PUBLIC_API_BASE_URL");
 string? apiOrigin = null;
@@ -50,7 +61,10 @@ var cs = Environment.GetEnvironmentVariable("ConnectionStrings__VirtuPathDB")
          ?? builder.Configuration.GetConnectionString("VirtuPathDB")
          ?? throw new InvalidOperationException("Connection string 'VirtuPathDB' not found.");
 
-Console.WriteLine($"[DB] Using connection string length: {cs.Length}");
+if (builder.Environment.IsDevelopment())
+{
+    Console.WriteLine($"[DB] Using connection string length: {cs.Length}");
+}
 
 builder.Services.AddCors(options =>
 {
@@ -155,7 +169,10 @@ if (rawUrl.StartsWith("cloudinary://"))
 }
 else
 {
-    Console.WriteLine("CLOUDINARY_URL missing or invalid – continuing without Cloudinary.");
+    if (builder.Environment.IsDevelopment())
+    {
+        Console.WriteLine("CLOUDINARY_URL missing or invalid – continuing without Cloudinary.");
+    }
 }
 
 //────────────────────────────────────────────────────────────────────────────
@@ -226,9 +243,6 @@ builder.Services.AddSwaggerGen(c =>
 //────────────────────────────────────────────────────────────────────────────
 // 8) BUILD APP & PIPELINE
 //────────────────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────────────────
-// Pipeline
-// ────────────────────────────────────────────────────────────────────────────
 static void RegisterPaddlePriceIds()
 {
     // monthly = 30 days, yearly = 365 days
@@ -364,7 +378,8 @@ using (var scope = app.Services.CreateScope())
                 pub  = Convert.ToBase64String(pubParam.GetEncoded())
             });
 
-            vault.EncRatchetPrivKeyJson = protector.Protect(blob);
+            var protectedBlob = protector.Protect(blob);
+            vault.EncRatchetPrivKeyJson = protectedBlob;
             vault.RotatedAt = DateTime.UtcNow;
         }
 
@@ -373,7 +388,11 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[KeyVaultSeed] Skipped due to error: {ex.Message}");
+        if (app.Environment.IsDevelopment())
+        {
+            Console.WriteLine($"[KeyVaultSeed] Skipped due to error: {ex.Message}");
+        }
+        
     }
 }
 

@@ -99,7 +99,7 @@ namespace VirtuPathAPI.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error updating performance review: " + ex.Message);
+               
                 // Optional: log or handle this non-blocking error
             }
 
