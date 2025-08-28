@@ -80,6 +80,10 @@
               "target": "Package",
               "version": "[6.2.3, )"
             },
+            "TimeZoneConverter": {
+              "target": "Package",
+              "version": "[7.0.0, )"
+            },
             "dotenv.net": {
               "target": "Package",
               "version": "[3.2.1, )"

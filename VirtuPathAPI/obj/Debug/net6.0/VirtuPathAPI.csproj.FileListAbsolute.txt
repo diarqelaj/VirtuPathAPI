@@ -462,3 +462,4 @@ C:\Users\taula\OneDrive\Documents\GitHub\VirtuPathApi\VirtuPathAPI\obj\Debug\net
 C:\Users\taula\OneDrive\Documents\GitHub\VirtuPathApi\VirtuPathAPI\obj\Debug\net6.0\VirtuPathAPI.pdb
 C:\Users\taula\OneDrive\Documents\GitHub\VirtuPathApi\VirtuPathAPI\obj\Debug\net6.0\VirtuPathAPI.genruntimeconfig.cache
 C:\Users\taula\OneDrive\Documents\GitHub\VirtuPathApi\VirtuPathAPI\obj\Debug\net6.0\ref\VirtuPathAPI.dll
+C:\Users\Gaming\Documents\GitHub\VirtuPathAPI\VirtuPathAPI\bin\Debug\net6.0\TimeZoneConverter.dll

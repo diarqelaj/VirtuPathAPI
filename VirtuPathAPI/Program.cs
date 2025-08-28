@@ -74,7 +74,9 @@ builder.Services.AddCors(options =>
         {
             "https://virtu-path-ai.vercel.app",
             "https://www.virtupathai.com",
-            "https://localhost:7072"
+            "http://localhost:8080",
+            "https://localhost:3000",
+            "http://localhost:3000" 
         };
         if (!string.IsNullOrEmpty(apiOrigin)) origins.Add(apiOrigin);
 
@@ -87,7 +89,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowSwagger", p =>
     {
         p.WithOrigins(
-            "https://localhost:7072",
+            "http://localhost:8080",
             "https://localhost:3000",
             "http://localhost:3000",
             "https://localhost:5249"

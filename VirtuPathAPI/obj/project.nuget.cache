@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "dizNgzPz9BLDniZ+UFlWJeZhSwDPwTOX+Vn0oBbagvj7FpLppvIblfShgeLABIQlkzU4mWxyN+8aa/wkK9/77A==",
+  "dgSpecHash": "qqsZh3EFoxQvHnbD1ATXuQrMVeh6dipQsr7jEzIzc+yk5sB+8IA5JEOrX7CCEuTXsnNOzxOZMXmUaeLLj3BgYw==",
   "success": true,
   "projectFilePath": "C:\\Users\\Gaming\\Documents\\GitHub\\VirtuPathAPI\\VirtuPathAPI\\VirtuPathAPI.csproj",
   "expectedPackageFiles": [
@@ -144,7 +144,8 @@
     "C:\\Users\\Gaming\\.nuget\\packages\\system.threading\\4.3.0\\system.threading.4.3.0.nupkg.sha512",
     "C:\\Users\\Gaming\\.nuget\\packages\\system.threading.channels\\8.0.0\\system.threading.channels.8.0.0.nupkg.sha512",
     "C:\\Users\\Gaming\\.nuget\\packages\\system.threading.tasks\\4.3.0\\system.threading.tasks.4.3.0.nupkg.sha512",
-    "C:\\Users\\Gaming\\.nuget\\packages\\system.windows.extensions\\4.7.0\\system.windows.extensions.4.7.0.nupkg.sha512"
+    "C:\\Users\\Gaming\\.nuget\\packages\\system.windows.extensions\\4.7.0\\system.windows.extensions.4.7.0.nupkg.sha512",
+    "C:\\Users\\Gaming\\.nuget\\packages\\timezoneconverter\\7.0.0\\timezoneconverter.7.0.0.nupkg.sha512"
   ],
   "logs": []
 }

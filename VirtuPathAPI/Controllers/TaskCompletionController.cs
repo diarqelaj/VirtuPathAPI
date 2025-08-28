@@ -15,10 +15,20 @@ namespace VirtuPathAPI.Controllers
             _context = context;
         }
 
+        /// <summary>
+        /// GET /api/TaskCompletion?userID=..&careerPathId=.. (both optional filters)
+        /// </summary>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TaskCompletion>>> GetTaskCompletions()
+        public async Task<ActionResult<IEnumerable<TaskCompletion>>> GetTaskCompletions(
+            [FromQuery] int? userID,
+            [FromQuery] int? careerPathId)
         {
-            return await _context.TaskCompletions.ToListAsync();
+            var q = _context.TaskCompletions.AsQueryable();
+
+            if (userID.HasValue) q = q.Where(tc => tc.UserID == userID.Value);
+            if (careerPathId.HasValue) q = q.Where(tc => tc.CareerPathID == careerPathId.Value);
+
+            return Ok(await q.ToListAsync());
         }
 
         [HttpGet("{id}")]
@@ -31,80 +41,92 @@ namespace VirtuPathAPI.Controllers
             return completion;
         }
 
+        /// <summary>
+        /// Body must include: UserID, TaskID, CareerPathID, CareerDay, CompletionDate
+        /// </summary>
         [HttpPost]
-        public async Task<ActionResult<TaskCompletion>> CreateTaskCompletion(TaskCompletion completion)
+        public async Task<ActionResult<TaskCompletion>> CreateTaskCompletion([FromBody] TaskCompletion completion)
         {
-            // Step 1: Save the new task completion
+            if (completion == null) return BadRequest("Missing payload.");
+            if (completion.UserID <= 0 || completion.TaskID <= 0 || completion.CareerPathID <= 0)
+                return BadRequest("UserID, TaskID and CareerPathID are required.");
+            if (completion.CareerDay < 0) return BadRequest("CareerDay must be >= 0.");
+
+            // Optional: validate the task belongs to the given careerPathId
+            var task = await _context.DailyTasks
+                .Where(t => t.TaskID == completion.TaskID)
+                .Select(t => new { t.TaskID, t.CareerPathID, t.Day })
+                .FirstOrDefaultAsync();
+
+            if (task == null) return BadRequest("Task does not exist.");
+            if (task.CareerPathID != completion.CareerPathID)
+                return BadRequest("Task does not belong to the specified CareerPathID.");
+
+            // Optional: prevent duplicates (same user+task)
+            var already = await _context.TaskCompletions
+                .AnyAsync(tc => tc.UserID == completion.UserID && tc.TaskID == completion.TaskID);
+            if (already)
+                return Conflict("Task already marked as completed.");
+
+            // Save the new completion
             _context.TaskCompletions.Add(completion);
             await _context.SaveChangesAsync();
 
+            // Non-blocking: Update / upsert monthly performance review for this *careerPath*
             try
             {
-                // Step 2: Get the user's latest subscription
-                var subscription = await _context.UserSubscriptions
-                    .Where(s => s.UserID == completion.UserID)
-                    .OrderByDescending(s => s.StartAt)
-                    .FirstOrDefaultAsync();
+                int month = completion.CompletionDate.Month;
+                int year  = completion.CompletionDate.Year;
 
-                if (subscription != null)
+                // Assigned tasks in this path (for naive score). If you'd rather use “assigned this month/day”, adjust here.
+                int totalAssignedTasks = await _context.DailyTasks
+                    .Where(t => t.CareerPathID == completion.CareerPathID)
+                    .CountAsync();
+
+                var existingReview = await _context.PerformanceReviews.FirstOrDefaultAsync(r =>
+                    r.UserID == completion.UserID &&
+                    r.CareerPathID == completion.CareerPathID &&
+                    r.Month == month &&
+                    r.Year == year
+                );
+
+                if (existingReview != null)
                 {
-                    int careerPathID = subscription.CareerPathID;
-                    int month = completion.CompletionDate.Month;
-                    int year = completion.CompletionDate.Year;
+                    existingReview.TasksCompleted += 1;
+                    existingReview.PerformanceScore = existingReview.TasksAssigned > 0
+                        ? (int)Math.Round((double)existingReview.TasksCompleted / existingReview.TasksAssigned * 100)
+                        : 0;
 
-                    // Step 3: Count how many tasks are assigned to this career path
-                    int totalAssignedTasks = await _context.DailyTasks
-                        .Where(t => t.CareerPathID == careerPathID)
-                        .CountAsync();
-
-                    // Step 4: Check if a performance review exists
-                    var existingReview = await _context.PerformanceReviews.FirstOrDefaultAsync(r =>
-                        r.UserID == completion.UserID &&
-                        r.CareerPathID == careerPathID &&
-                        r.Month == month &&
-                        r.Year == year
-                    );
-
-                    if (existingReview != null)
-                    {
-                        // Update existing review
-                        existingReview.TasksCompleted += 1;
-                        existingReview.PerformanceScore = existingReview.TasksAssigned > 0
-                            ? (int)Math.Round((double)existingReview.TasksCompleted / existingReview.TasksAssigned * 100)
-                            : 0;
-
-                        _context.PerformanceReviews.Update(existingReview);
-                    }
-                    else
-                    {
-                        // Create new review
-                        var review = new PerformanceReview
-                        {
-                            UserID = completion.UserID,
-                            CareerPathID = careerPathID,
-                            Month = month,
-                            Year = year,
-                            TasksCompleted = 1,
-                            TasksAssigned = totalAssignedTasks,
-                            PerformanceScore = totalAssignedTasks > 0
-                                ? (int)Math.Round(100.0 / totalAssignedTasks)
-                                : 0
-                        };
-
-                        await _context.PerformanceReviews.AddAsync(review);
-                    }
-
-                    await _context.SaveChangesAsync();
+                    _context.PerformanceReviews.Update(existingReview);
                 }
+                else
+                {
+                    var review = new PerformanceReview
+                    {
+                        UserID = completion.UserID,
+                        CareerPathID = completion.CareerPathID,
+                        Month = month,
+                        Year = year,
+                        TasksCompleted = 1,
+                        TasksAssigned = totalAssignedTasks,
+                        PerformanceScore = totalAssignedTasks > 0
+                            ? (int)Math.Round(100.0 / totalAssignedTasks)
+                            : 0
+                    };
+
+                    await _context.PerformanceReviews.AddAsync(review);
+                }
+
+                await _context.SaveChangesAsync();
             }
-            catch (Exception ex)
+            catch
             {
-               
-                // Optional: log or handle this non-blocking error
+                // swallow non-critical analytics errors
             }
 
             return CreatedAtAction(nameof(GetTaskCompletion), new { id = completion.CompletionID }, completion);
         }
+
         [HttpGet("byuser/{userId}")]
         public async Task<ActionResult<IEnumerable<TaskCompletion>>> GetTaskCompletionsByUser(int userId)
         {
@@ -112,8 +134,6 @@ namespace VirtuPathAPI.Controllers
                 .Where(tc => tc.UserID == userId)
                 .ToListAsync();
         }
-
-
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateTaskCompletion(int id, TaskCompletion completion)
