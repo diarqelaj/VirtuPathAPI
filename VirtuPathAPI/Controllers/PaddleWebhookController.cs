@@ -118,7 +118,7 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { ok = true });
         }
 
-        // ---------------- Return endpoint (best UX): Paddle redirects here with _ptxn ----------------
+        // ---------------- Return endpoint ----------------
         [HttpGet("return"), AllowAnonymous]
         public async Task<IActionResult> Return(
             [FromQuery(Name = "_ptxn")] string? txnId,
@@ -126,7 +126,6 @@ namespace VirtuPathAPI.Controllers
             [FromQuery(Name = "transactionId")] string? txnId3,
             [FromQuery] string? next)
         {
-            // log raw query for debugging
             _log.LogInformation("Paddle Return hit: {Query}", Request?.QueryString.Value);
 
             txnId ??= txnId2 ?? txnId3;
@@ -138,7 +137,7 @@ namespace VirtuPathAPI.Controllers
             if (tx == null)
                 return Redirect(ComposeNext(next, ok: false, msg: "fetch_failed", txnId: txnId));
 
-            // If not completed, wait briefly and re-check once to smooth out 3DS/auth lag
+            // brief retry to smooth auth lag
             if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
             {
                 await Task.Delay(1500);
@@ -153,7 +152,7 @@ namespace VirtuPathAPI.Controllers
             return Redirect(ComposeNext(next, ok: true, msg: null, txnId: txnId));
         }
 
-        // Instance version that knows the frontend base and can forward txn id to the UI.
+        // Compose redirect target; defaults to frontend host
         private string ComposeNext(string? next, bool ok, string? msg, string? txnId)
         {
             string dest;
@@ -178,27 +177,73 @@ namespace VirtuPathAPI.Controllers
             return dest + sep + q;
         }
 
-        // ---------------- Confirm endpoint (optional JSON path from client) ----------------
-        public sealed class ConfirmReq { public string? TxnId { get; set; } } // must be public to avoid CS0051
-
+        // ---------------- Confirm endpoint (JSON) ----------------
+        // Defensive: accepts TxnId/txnId, returns detailed error JSON on failure
         [HttpPost("confirm"), AllowAnonymous]
-        public async Task<IActionResult> Confirm([FromBody] ConfirmReq req)
+        [Consumes("application/json")]
+        [Produces("application/json")]
+        public async Task<IActionResult> Confirm([FromBody] JsonElement body)
         {
-            if (string.IsNullOrWhiteSpace(req?.TxnId))
-                return BadRequest(new { error = "Missing txnId" });
+            try
+            {
+                string? txnId = null;
+                if (body.ValueKind == JsonValueKind.Object)
+                {
+                    if (body.TryGetProperty("TxnId", out var a) && a.ValueKind == JsonValueKind.String)
+                        txnId = a.GetString();
+                    else if (body.TryGetProperty("txnId", out var b) && b.ValueKind == JsonValueKind.String)
+                        txnId = b.GetString();
+                }
 
-            var tx = await FetchTransactionFromPaddleAsync(req.TxnId);
-            if (tx == null)
-                return BadRequest(new { error = "Could not fetch transaction from Paddle" });
+                if (string.IsNullOrWhiteSpace(txnId))
+                {
+                    _log.LogWarning("Confirm: missing txnId. Raw body: {Body}", body.ToString());
+                    return BadRequest(new { error = "Missing txnId" });
+                }
 
-            if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
-                return Ok(new { ok = false, status = tx.status });
+                var tx = await FetchTransactionFromPaddleAsync(txnId);
+                if (tx == null)
+                    return BadRequest(new { error = "Could not fetch transaction from Paddle" });
 
-            await ProcessTransactionAsync(tx);
-            return Ok(new { ok = true });
+                if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
+                    return Ok(new { ok = false, status = tx.status });
+
+                await ProcessTransactionAsync(tx);
+                return Ok(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Confirm endpoint failed");
+                return StatusCode(500, new { error = "server_error", detail = ex.Message });
+            }
         }
 
-        // ---------------- Core unlock logic (used by webhook, return, confirm) ----------------
+        // ---- Diagnostic probe: see raw Paddle response for a txn ----
+        [HttpGet("confirm-diag"), AllowAnonymous]
+        public async Task<IActionResult> ConfirmDiag([FromQuery(Name = "txnId")] string txnId)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_paddleApiKey))
+                    return Ok(new { ok = false, reason = "no_api_key" });
+
+                using var http = new HttpClient { BaseAddress = new Uri("https://api.paddle.com/") };
+                http.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _paddleApiKey);
+
+                var resp = await http.GetAsync($"transactions/{txnId}");
+                var text = await resp.Content.ReadAsStringAsync();
+
+                return Ok(new { ok = resp.IsSuccessStatusCode, statusCode = (int)resp.StatusCode, body = text });
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "ConfirmDiag failed");
+                return StatusCode(500, new { error = "server_error", detail = ex.Message });
+            }
+        }
+
+        // ---------------- Core unlock logic ----------------
         private async Task ProcessTransactionAsync(Transaction tx)
         {
             // Prefer custom_data from payload if present
@@ -397,7 +442,9 @@ namespace VirtuPathAPI.Controllers
                 var resp = await http.GetAsync($"transactions/{txnId}");
                 if (!resp.IsSuccessStatusCode)
                 {
-                    _log.LogWarning("Paddle API: GET transactions/{Id} failed: {Code}", txnId, (int)resp.StatusCode);
+                    var bodyText = await resp.Content.ReadAsStringAsync();
+                    _log.LogWarning("Paddle API: GET transactions/{Id} failed: {Code} Body={Body}",
+                        txnId, (int)resp.StatusCode, bodyText);
                     return null;
                 }
 
