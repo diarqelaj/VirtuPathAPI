@@ -17,6 +17,7 @@ namespace VirtuPathAPI.Controllers
         private readonly ILogger<PaddleWebhookController> _log;
         private readonly string _secret;
         private readonly string? _paddleApiKey; // used for confirm/return fetch
+        private readonly string _frontendBase;  // e.g. https://www.virtupathai.com
 
         public PaddleWebhookController(
             UserContext users,
@@ -30,6 +31,9 @@ namespace VirtuPathAPI.Controllers
 
             _secret = cfg["Paddle:WebhookSecret"] ?? throw new InvalidOperationException("Missing Paddle:WebhookSecret");
             _paddleApiKey = cfg["Paddle:ApiKey"]; // must match sandbox/live environment you’re using
+
+            // Frontend base used for default redirects (when next= is missing or relative)
+            _frontendBase = cfg["Frontend:BaseUrl"]?.TrimEnd('/') ?? "https://www.virtupathai.com";
         }
 
         // ---------- Payload models ----------
@@ -115,34 +119,62 @@ namespace VirtuPathAPI.Controllers
         }
 
         // ---------------- Return endpoint (best UX): Paddle redirects here with _ptxn ----------------
-    [HttpGet("return"), AllowAnonymous]
-    public async Task<IActionResult> Return(
-    [FromQuery(Name = "_ptxn")] string? txnId,
-    [FromQuery(Name = "transaction_id")] string? txnId2,
-    [FromQuery(Name = "transactionId")] string? txnId3,
-    [FromQuery] string? next)
-    {
-        txnId ??= txnId2 ?? txnId3;
-
-        if (string.IsNullOrWhiteSpace(txnId))
-            return Redirect(ComposeNext(next, ok: false, msg: "no_ptxn"));
-
-        var tx = await FetchTransactionFromPaddleAsync(txnId);
-        if (tx == null) return Redirect(ComposeNext(next, ok: false, msg: "fetch_failed"));
-        if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
-            return Redirect(ComposeNext(next, ok: false, msg: "pending"));
-
-        await ProcessTransactionAsync(tx);
-        return Redirect(ComposeNext(next, ok: true, msg: null));
-    }
-
-
-        private static string ComposeNext(string? next, bool ok, string? msg)
+        [HttpGet("return"), AllowAnonymous]
+        public async Task<IActionResult> Return(
+            [FromQuery(Name = "_ptxn")] string? txnId,
+            [FromQuery(Name = "transaction_id")] string? txnId2,
+            [FromQuery(Name = "transactionId")] string? txnId3,
+            [FromQuery] string? next)
         {
-            var dest = string.IsNullOrWhiteSpace(next) ? "/thank-you" : next!;
+            // log raw query for debugging
+            _log.LogInformation("Paddle Return hit: {Query}", Request?.QueryString.Value);
+
+            txnId ??= txnId2 ?? txnId3;
+
+            if (string.IsNullOrWhiteSpace(txnId))
+                return Redirect(ComposeNext(next, ok: false, msg: "no_ptxn", txnId: null));
+
+            var tx = await FetchTransactionFromPaddleAsync(txnId);
+            if (tx == null)
+                return Redirect(ComposeNext(next, ok: false, msg: "fetch_failed", txnId: txnId));
+
+            // If not completed, wait briefly and re-check once to smooth out 3DS/auth lag
+            if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
+            {
+                await Task.Delay(1500);
+                var tx2 = await FetchTransactionFromPaddleAsync(txnId);
+                if (tx2 != null) tx = tx2;
+            }
+
+            if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
+                return Redirect(ComposeNext(next, ok: false, msg: "pending", txnId: txnId));
+
+            await ProcessTransactionAsync(tx);
+            return Redirect(ComposeNext(next, ok: true, msg: null, txnId: txnId));
+        }
+
+        // Instance version that knows the frontend base and can forward txn id to the UI.
+        private string ComposeNext(string? next, bool ok, string? msg, string? txnId)
+        {
+            string dest;
+            if (string.IsNullOrWhiteSpace(next))
+            {
+                dest = $"{_frontendBase}/thank-you";
+            }
+            else if (next.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                     next.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                dest = next;
+            }
+            else
+            {
+                dest = $"{_frontendBase}/{next.TrimStart('/')}";
+            }
+
             var sep = dest.Contains('?') ? "&" : "?";
             var q = ok ? "ok=1" : "ok=0";
-            if (!string.IsNullOrWhiteSpace(msg)) q += "&reason=" + Uri.EscapeDataString(msg);
+            if (!string.IsNullOrWhiteSpace(msg))  q += "&reason=" + Uri.EscapeDataString(msg);
+            if (!string.IsNullOrWhiteSpace(txnId)) q += "&ptxn=" + Uri.EscapeDataString(txnId);
             return dest + sep + q;
         }
 
@@ -212,25 +244,25 @@ namespace VirtuPathAPI.Controllers
                 if (!exists)
                 {
                     var startUtc = DateTime.UtcNow;
-                     DateTime? periodEnd = null;
-                     if (string.Equals(billing, "monthly", StringComparison.OrdinalIgnoreCase))
-                         periodEnd = startUtc.AddDays(30);
-                     else if (string.Equals(billing, "yearly", StringComparison.OrdinalIgnoreCase))
-                         periodEnd = startUtc.AddDays(365);
-                     // else: one_time / lifetime => leave null
-                    
-                     var sub = new UserSubscription
-                     {
-                         UserID           = resolvedUserId.Value,
-                         CareerPathID     = careerId,
-                         Plan             = plan,      // "starter" | "pro" | "bonus"
-                         Billing          = billing,   // "monthly" | "yearly" | "one_time"
-                         StartAt          = startUtc,
-                         CurrentPeriodEnd = periodEnd,
-                         LastTransactionId= tx.id,
-                         IsActive         = true,
-                         IsCanceled       = false,
-                     };
+                    DateTime? periodEnd = null;
+                    if (string.Equals(billing, "monthly", StringComparison.OrdinalIgnoreCase))
+                        periodEnd = startUtc.AddDays(30);
+                    else if (string.Equals(billing, "yearly", StringComparison.OrdinalIgnoreCase))
+                        periodEnd = startUtc.AddDays(365);
+                    // else: one_time / lifetime => leave null
+
+                    var sub = new UserSubscription
+                    {
+                        UserID            = resolvedUserId.Value,
+                        CareerPathID      = careerId,
+                        Plan              = plan,      // "starter" | "pro" | "bonus"
+                        Billing           = billing,   // "monthly" | "yearly" | "one_time"
+                        StartAt           = startUtc,
+                        CurrentPeriodEnd  = periodEnd,
+                        LastTransactionId = tx.id,
+                        IsActive          = true,
+                        IsCanceled        = false,
+                    };
                     _subs.UserSubscriptions.Add(sub);
                     await _subs.SaveChangesAsync();
 
