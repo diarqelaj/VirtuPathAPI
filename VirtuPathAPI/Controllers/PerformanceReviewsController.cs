@@ -72,217 +72,227 @@ namespace VirtuPathAPI.Controllers
         }
 
         [HttpGet("progress/daily")]
-        public async Task<IActionResult> GetDailyProgress([FromQuery] int userId, [FromQuery] int day)
+        public async Task<IActionResult> GetDailyProgress(
+            [FromQuery] int userId,
+            [FromQuery] int day,
+            [FromQuery] int? careerPathId // 👈 NEW
+        )
         {
             var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound("User not found.");
+            if (user == null) return NotFound("User not found.");
 
-            if (user.CareerPathID == null)
-               return BadRequest("User does not have a CareerPath assigned.");
+            // choose path: query param → fallback to user's current
+            var cp = careerPathId ?? user.CareerPathID;
+            if (cp == null) return BadRequest("No careerPathId provided and user has no CareerPath assigned.");
+            int cpId = cp.Value;
 
-             int careerPathId = user.CareerPathID.Value;
-
-
-
-            var assignedTasks = await _context.DailyTasks
-                .Where(dt => dt.Day == day && dt.CareerPathID == careerPathId)
+            // tasks assigned for this path+day
+            var assignedTaskIds = await _context.DailyTasks
+                .Where(dt => dt.Day == day && dt.CareerPathID == cpId)
+                .Select(dt => dt.TaskID)
                 .ToListAsync();
 
+            // completions for this user that match those assigned tasks
             var completedTaskIds = await _context.TaskCompletions
-                .Where(tc => tc.UserID == userId)
+                .Where(tc => tc.UserID == userId && assignedTaskIds.Contains(tc.TaskID))
                 .Select(tc => tc.TaskID)
+                .Distinct()
                 .ToListAsync();
 
-            var completedTasks = assignedTasks
-                .Where(t => completedTaskIds.Contains(t.TaskID))
-                .ToList();
+            int tasksAssigned = assignedTaskIds.Count;
+            int tasksCompleted = completedTaskIds.Count;
+            int performanceScore = tasksAssigned == 0 ? 0 : (int)Math.Round(tasksCompleted * 100.0 / tasksAssigned);
 
-            int tasksAssigned = assignedTasks.Count;
-            int tasksCompleted = completedTasks.Count;
-            int performanceScore = tasksAssigned == 0 ? 0 : (int)Math.Round((double)(tasksCompleted * 100) / tasksAssigned);
-
+            // Note: ASP.NET Core serializes to camelCase by default -> performanceScore
             return Ok(new
             {
-                UserID = userId,
-                CareerPathID = careerPathId,
-                Day = day,
-                TasksAssigned = tasksAssigned,
-                TasksCompleted = tasksCompleted,
-                PerformanceScore = performanceScore
+                userId,
+                careerPathId = cpId,
+                day,
+                tasksAssigned,
+                tasksCompleted,
+                performanceScore
             });
         }
 
 
-        // GET: api/PerformanceReviews/progress/weekly?userId=1
-        [HttpGet("progress/weekly")]
-        public async Task<IActionResult> GetWeeklyProgress([FromQuery] int userId, [FromQuery] int day)
+
+       [HttpGet("progress/weekly")]
+        public async Task<IActionResult> GetWeeklyProgress(
+            [FromQuery] int userId,
+            [FromQuery] int day,
+            [FromQuery] int? careerPathId // 👈 NEW
+        )
         {
             var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound("User not found.");
+            if (user == null) return NotFound("User not found.");
 
-            if (user.CareerPathID == null)
-                return BadRequest("User does not have a CareerPath assigned.");
+            var cp = careerPathId ?? user.CareerPathID;
+            if (cp == null) return BadRequest("No careerPathId provided and user has no CareerPath assigned.");
+            int cpId = cp.Value;
 
-            int careerPathId = user.CareerPathID.Value;
-
-            // 🧠 Use the 'day' from query to compute the correct week range
             int weekStart = ((day - 1) / 7) * 7 + 1;
             int weekEnd = weekStart + 6;
 
-            var assignedTasks = await _context.DailyTasks
-                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= weekStart && dt.Day <= weekEnd)
+            var assigned = await _context.DailyTasks
+                .Where(dt => dt.CareerPathID == cpId && dt.Day >= weekStart && dt.Day <= weekEnd)
+                .Select(dt => dt.TaskID)
                 .ToListAsync();
 
-            var completedTaskIds = await _context.TaskCompletions
-                .Where(tc => tc.UserID == userId)
+            var completed = await _context.TaskCompletions
+                .Where(tc => tc.UserID == userId && assigned.Contains(tc.TaskID))
                 .Select(tc => tc.TaskID)
+                .Distinct()
                 .ToListAsync();
 
-            var completedTasks = assignedTasks
-                .Where(t => completedTaskIds.Contains(t.TaskID))
-                .ToList();
-
-            int tasksAssigned = assignedTasks.Count;
-            int tasksCompleted = completedTasks.Count;
-            int performanceScore = tasksAssigned == 0 ? 0 : (int)Math.Round((double)(tasksCompleted * 100) / tasksAssigned);
+            int tasksAssigned = assigned.Count;
+            int tasksCompleted = completed.Count;
+            int performanceScore = tasksAssigned == 0 ? 0 : (int)Math.Round(tasksCompleted * 100.0 / tasksAssigned);
 
             return Ok(new
             {
-                UserID = userId,
-                CareerPathID = careerPathId,
-                WeekRange = $"Days {weekStart}-{weekEnd}",
-                TasksAssigned = tasksAssigned,
-                TasksCompleted = tasksCompleted,
-                PerformanceScore = performanceScore
+                userId,
+                careerPathId = cpId,
+                weekRange = $"Days {weekStart}-{weekEnd}",
+                tasksAssigned,
+                tasksCompleted,
+                performanceScore
             });
         }
 
 
 
+       // GET: api/PerformanceReviews/progress/monthly?userId=1&careerPathId=123
+[HttpGet("progress/monthly")]
+public async Task<IActionResult> GetMonthlyProgress(
+    [FromQuery] int userId,
+    [FromQuery] int? careerPathId // 👈 optional; falls back to user's current
+)
+{
+    // 1) Resolve user and career path
+    var user = await _context.Users.FindAsync(userId);
+    if (user == null)
+        return NotFound("User not found.");
 
-        // GET: api/PerformanceReviews/progress/monthly?userId=1
-        // GET: api/PerformanceReviews/progress/monthly?userId=1
-        [HttpGet("progress/monthly")]
-        public async Task<IActionResult> GetMonthlyProgress([FromQuery] int userId)
+    var cp = careerPathId ?? user.CareerPathID;
+    if (cp == null)
+        return BadRequest("No careerPathId provided and user has no CareerPath assigned.");
+    int cpId = cp.Value;
+
+    // 2) Load all tasks for this path within 1–30 (fixed month window)
+    //    Keeping full objects so we can reuse Day for weekly breakdown.
+    var allTasksInMonth = await _context.DailyTasks
+        .Where(dt => dt.CareerPathID == cpId && dt.Day >= 1 && dt.Day <= 30)
+        .ToListAsync();
+
+    // 3) Load user's completed TaskIDs that intersect those month tasks (same user, this path)
+    var monthTaskIds = allTasksInMonth.Select(t => t.TaskID).ToList();
+    var completedTaskIds = await _context.TaskCompletions
+        .Where(tc => tc.UserID == userId && monthTaskIds.Contains(tc.TaskID))
+        .Select(tc => tc.TaskID)
+        .Distinct()
+        .ToListAsync();
+
+    // 4) Totals for the month
+    int totalAssigned = allTasksInMonth.Count;
+    int totalCompleted = completedTaskIds.Count;
+    int performanceScore = totalAssigned == 0
+        ? 0
+        : (int)Math.Round(totalCompleted * 100.0 / totalAssigned);
+
+    // 5) Weekly breakdown (weeks 1..5, days 1..30)
+    var weeklyProgress = new List<object>(capacity: 5);
+    for (int i = 0; i < 5; i++)
+    {
+        int startDay = i * 7 + 1;
+        int endDay = Math.Min(startDay + 6, 30);
+
+        var weekTasks = allTasksInMonth.Where(t => t.Day >= startDay && t.Day <= endDay).ToList();
+        var weekTaskIds = weekTasks.Select(t => t.TaskID).ToList();
+        int weekTotal = weekTasks.Count;
+        int weekCompleted = weekTaskIds.Count(id => completedTaskIds.Contains(id));
+
+        weeklyProgress.Add(new
         {
-            // 1. Find the user
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound("User not found.");
+            Week = $"Week {i + 1}",
+            Completed = weekCompleted,
+            Total = weekTotal
+        });
+    }
 
-            if (user.CareerPathID == null)
-                return BadRequest("User does not have a CareerPath assigned.");
+    // 6) Response (ASP.NET Core will camelCase these by default)
+    return Ok(new
+    {
+        UserID = userId,
+        CareerPathID = cpId,
+        Month = DateTime.UtcNow.Month,
+        Year = DateTime.UtcNow.Year,
+        TasksAssigned = totalAssigned,
+        TasksCompleted = totalCompleted,
+        PerformanceScore = performanceScore,
+        WeeklyProgress = weeklyProgress
+    });
+}
+// GET: api/PerformanceReviews/progress/alltime?userId=1&careerPathId=123
+[HttpGet("progress/alltime")]
+public async Task<IActionResult> GetAllTimeProgress(
+    [FromQuery] int userId,
+    [FromQuery] int? careerPathId // 👈 optional; falls back to user's current
+)
+{
+    var user = await _context.Users.FindAsync(userId);
+    if (user == null)
+        return NotFound("User not found.");
 
-            int careerPathId = user.CareerPathID.Value;
+    var cp = careerPathId ?? user.CareerPathID;
+    if (cp == null)
+        return BadRequest("No careerPathId provided and user has no CareerPath assigned.");
+    int cpId = cp.Value;
 
-            // 2. Get all tasks for this career path within day 1–30 (assume fixed month range)
-            var allTasksInMonth = await _context.DailyTasks
-                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 30)
-                .ToListAsync();
+    // Load ALL tasks for this path across days 1..360 (12 "months" of 30 days)
+    // Keep full objects so we can slice by day ranges in-memory efficiently.
+    var allTasks = await _context.DailyTasks
+        .Where(dt => dt.CareerPathID == cpId && dt.Day >= 1 && dt.Day <= 360)
+        .ToListAsync();
 
-            // 3. Get user's completed task IDs
-            var completedTaskIds = await _context.TaskCompletions
-                .Where(tc => tc.UserID == userId)
-                .Select(tc => tc.TaskID)
-                .ToListAsync();
+    var allTaskIds = allTasks.Select(t => t.TaskID).ToList();
 
-            // 4. Determine total assigned and completed tasks for the entire month
-            var completedTasks = allTasksInMonth
-                .Where(t => completedTaskIds.Contains(t.TaskID))
-                .ToList();
+    // Only completions that correspond to this path's tasks
+    var completedTaskIds = await _context.TaskCompletions
+        .Where(tc => tc.UserID == userId && allTaskIds.Contains(tc.TaskID))
+        .Select(tc => tc.TaskID)
+        .Distinct()
+        .ToListAsync();
 
-            int totalAssigned = allTasksInMonth.Count;
-            int totalCompleted = completedTasks.Count;
-            int performanceScore = totalAssigned == 0 ? 0 : (int)Math.Round((double)(totalCompleted * 100) / totalAssigned);
+    var monthlyProgress = new List<object>(capacity: 12);
 
-            // 5. Build weekly progress breakdown
-            var weeklyProgress = new List<object>();
-            for (int i = 0; i < 5; i++)
-            {
-                int startDay = i * 7 + 1;
-                int endDay = Math.Min(startDay + 6, 30);
+    for (int month = 0; month < 12; month++)
+    {
+        int startDay = month * 30 + 1;
+        int endDay = startDay + 29;
 
-                var weekTasks = allTasksInMonth.Where(t => t.Day >= startDay && t.Day <= endDay).ToList();
-                var weekCompleted = weekTasks.Where(t => completedTaskIds.Contains(t.TaskID)).ToList();
+        var monthTasks = allTasks.Where(dt => dt.Day >= startDay && dt.Day <= endDay).ToList();
+        var monthTaskIds = monthTasks.Select(t => t.TaskID).ToList();
 
-                weeklyProgress.Add(new
-                {
-                    Week = $"Week {i + 1}",
-                    Completed = weekCompleted.Count,
-                    Total = weekTasks.Count
-                });
-            }
+        int tasksAssigned = monthTasks.Count;
+        int tasksCompleted = monthTaskIds.Count(id => completedTaskIds.Contains(id));
 
-            // 6. Return structured response
-            return Ok(new
-            {
-                UserID = userId,
-                CareerPathID = careerPathId,
-                Month = DateTime.UtcNow.Month,
-                Year = DateTime.UtcNow.Year,
-                TasksAssigned = totalAssigned,
-                TasksCompleted = totalCompleted,
-                PerformanceScore = performanceScore,
-                WeeklyProgress = weeklyProgress
-            });
-        }
-        [HttpGet("progress/alltime")]
-        public async Task<IActionResult> GetAllTimeProgress([FromQuery] int userId)
+        monthlyProgress.Add(new
         {
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound("User not found.");
+            Month = $"Month {month + 1}",
+            Days = $"{startDay}-{endDay}",
+            Completed = tasksCompleted,
+            Total = tasksAssigned
+        });
+    }
 
-            if (user.CareerPathID == null)
-                return BadRequest("User does not have a CareerPath assigned.");
-
-            int careerPathId = user.CareerPathID.Value;
-
-            var allTasks = await _context.DailyTasks
-                .Where(dt => dt.CareerPathID == careerPathId && dt.Day >= 1 && dt.Day <= 360)
-                .ToListAsync();
-
-            var completedTaskIds = await _context.TaskCompletions
-                .Where(tc => tc.UserID == userId)
-                .Select(tc => tc.TaskID)
-                .ToListAsync();
-
-            var monthlyProgress = new List<object>();
-
-            for (int month = 0; month < 12; month++)
-            {
-                int startDay = month * 30 + 1;
-                int endDay = startDay + 29;
-
-                var monthTasks = allTasks
-                    .Where(dt => dt.Day >= startDay && dt.Day <= endDay)
-                    .ToList();
-
-                var completedTasks = monthTasks
-                    .Where(t => completedTaskIds.Contains(t.TaskID))
-                    .ToList();
-
-                int tasksAssigned = monthTasks.Count;
-                int tasksCompleted = completedTasks.Count;
-
-                monthlyProgress.Add(new
-                {
-                    Month = $"Month {month + 1}",
-                    Days = $"{startDay}-{endDay}",
-                    Completed = tasksCompleted,
-                    Total = tasksAssigned
-                });
-            }
-
-            return Ok(new
-            {
-                UserID = userId,
-                CareerPathID = careerPathId,
-                MonthlyProgress = monthlyProgress
-            });
-        }
+    return Ok(new
+    {
+        UserID = userId,
+        CareerPathID = cpId,
+        MonthlyProgress = monthlyProgress
+    });
+}
 
 
         // POST: api/PerformanceReviews/generate-by-day?userId=1&day=3
