@@ -8,22 +8,30 @@ namespace VirtuPathAPI.Models
     public class TaskCompletion
     {
         [Key]
-        public int CompletionID { get; set; }  // Primary key
+        public int CompletionID { get; set; }
 
+        [Required]
         public int UserID { get; set; }
 
+        [Required]
         public int TaskID { get; set; }
 
+        [Required]
         public DateTime CompletionDate { get; set; }
 
-        // ✅ NEW: To track which logical "day" of the career path this belongs to
+        // Which logical “day” of that path
+        [Required]
         public int CareerDay { get; set; }
 
-        // Optional: Navigation properties if needed
-        [ForeignKey("UserID")]
+        // NEW: scope completions by path
+        [Required]
+        public int CareerPathID { get; set; }
+
+        // Navigation (optional)
+        [ForeignKey(nameof(UserID))]
         public User? User { get; set; }
 
-        [ForeignKey("TaskID")]
+        [ForeignKey(nameof(TaskID))]
         public DailyTask? Task { get; set; }
     }
 }
