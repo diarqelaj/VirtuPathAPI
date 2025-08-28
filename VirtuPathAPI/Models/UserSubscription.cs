@@ -34,8 +34,9 @@ namespace VirtuPathAPI.Models
         public DateTime StartAt { get; set; }
 
         [Column("EndDate", TypeName = "date")]
-        [DatabaseGenerated(DatabaseGeneratedOption.Computed)]  // <-- add this
-        public DateTime? CurrentPeriodEnd { get; private set; }  // <-- optional: prevent writes
+        [DatabaseGenerated(DatabaseGeneratedOption.Computed)]
+        public DateTime? CurrentPeriodEnd { get; set; }   // <-- public setter (no CS0272)
+
         
 
         // Not in DB: must be either dropped or made shadow properties / defaults
