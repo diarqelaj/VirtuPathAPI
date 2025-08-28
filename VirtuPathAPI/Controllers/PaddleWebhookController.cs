@@ -114,8 +114,9 @@ namespace VirtuPathAPI.Controllers
                 return Ok();
             }
 
-            await ProcessTransactionAsync(ev.data);
-            return Ok(new { ok = true });
+            var (ok, why) = await ProcessTransactionAsync(ev.data);
+            if (!ok) _log.LogWarning("Webhook: ProcessTransaction failed: {Why}", why ?? "(none)");
+            return Ok(new { ok = ok });
         }
 
         // ---------------- Return endpoint ----------------
@@ -148,8 +149,9 @@ namespace VirtuPathAPI.Controllers
             if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
                 return Redirect(ComposeNext(next, ok: false, msg: "pending", txnId: txnId));
 
-            await ProcessTransactionAsync(tx);
-            return Redirect(ComposeNext(next, ok: true, msg: null, txnId: txnId));
+            var (ok, why) = await ProcessTransactionAsync(tx);
+            if (!ok) _log.LogWarning("Return: ProcessTransaction failed: {Why}", why ?? "(none)");
+            return Redirect(ComposeNext(next, ok: ok, msg: ok ? null : "provision_failed", txnId: txnId));
         }
 
         // Compose redirect target; defaults to frontend host
@@ -208,8 +210,15 @@ namespace VirtuPathAPI.Controllers
                 if (!string.Equals(tx.status, "completed", StringComparison.OrdinalIgnoreCase))
                     return Ok(new { ok = false, status = tx.status });
 
-                await ProcessTransactionAsync(tx);
+                var (ok, why) = await ProcessTransactionAsync(tx);
+                if (!ok) return StatusCode(500, new { error = "db_update_failed", detail = why ?? "unknown" });
+
                 return Ok(new { ok = true });
+            }
+            catch (DbUpdateException ex)
+            {
+                _log.LogError(ex, "Confirm endpoint DB update failed: {Inner}", ex.InnerException?.Message);
+                return StatusCode(500, new { error = "db_update_failed", detail = ex.Message, inner = ex.InnerException?.Message });
             }
             catch (Exception ex)
             {
@@ -243,51 +252,51 @@ namespace VirtuPathAPI.Controllers
             }
         }
 
-        // ---------------- Core unlock logic ----------------
-        private async Task ProcessTransactionAsync(Transaction tx)
+        // ---------------- Core unlock logic (used by webhook, return, confirm) ----------------
+        // Returns (success, reasonIfAny)
+        private async Task<(bool ok, string? reason)> ProcessTransactionAsync(Transaction tx)
         {
-            // Prefer custom_data from payload if present
-            CustomData? cd = null;
-            if (tx.custom_data is JsonElement ce && ce.ValueKind != JsonValueKind.Null)
+            try
             {
-                try
+                // Prefer custom_data from payload if present
+                CustomData? cd = null;
+                if (tx.custom_data is JsonElement ce && ce.ValueKind != JsonValueKind.Null)
                 {
-                    cd = JsonSerializer.Deserialize<CustomData>(ce.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    try
+                    {
+                        cd = JsonSerializer.Deserialize<CustomData>(ce.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogError(ex, "custom_data parse failed (txn={Txn})", tx.id);
+                    }
                 }
-                catch (Exception ex)
+
+                var itemsToProvision = await BuildProvisioningItemsAsync(cd, tx);
+                if (itemsToProvision.Count == 0)
                 {
-                    _log.LogError(ex, "custom_data parse failed (txn={Txn})", tx.id);
+                    _log.LogWarning("No items to provision for txn {Txn}", tx.id);
+                    return (false, "no_items_to_provision");
                 }
-            }
 
-            var itemsToProvision = await BuildProvisioningItemsAsync(cd, tx);
-            if (itemsToProvision.Count == 0)
-            {
-                _log.LogWarning("No items to provision for txn {Txn}", tx.id);
-                return;
-            }
-
-            var resolvedUserId = await ResolveUserIdAsync(cd, tx);
-            if (resolvedUserId == null)
-            {
-                _log.LogWarning("Could not resolve user for txn {Txn}", tx.id);
-                return;
-            }
-
-            foreach (var it in itemsToProvision)
-            {
-                var priceId  = it.PriceId;
-                var careerId = it.Item.careerPathID;
-                var plan     = it.Item.plan;
-                var billing  = it.Item.billing;
-
-                var exists = await _subs.UserSubscriptions.AnyAsync(s =>
-                    s.UserID == resolvedUserId &&
-                    s.CareerPathID == careerId &&
-                    s.LastTransactionId == tx.id);
-
-                if (!exists)
+                var resolvedUserId = await ResolveUserIdAsync(cd, tx);
+                if (resolvedUserId == null)
                 {
+                    _log.LogWarning("Could not resolve user for txn {Txn}", tx.id);
+                    return (false, "user_not_resolved");
+                }
+
+                foreach (var it in itemsToProvision)
+                {
+                    var priceId  = it.PriceId;
+                    var careerId = it.Item.careerPathID;
+                    var plan     = it.Item.plan;
+                    var billing  = it.Item.billing;
+
+                    // UPSERT by (UserID, CareerPathID) to avoid unique constraint violations
+                    var sub = await _subs.UserSubscriptions
+                        .FirstOrDefaultAsync(s => s.UserID == resolvedUserId && s.CareerPathID == careerId);
+
                     var startUtc = DateTime.UtcNow;
                     DateTime? periodEnd = null;
                     if (string.Equals(billing, "monthly", StringComparison.OrdinalIgnoreCase))
@@ -296,40 +305,79 @@ namespace VirtuPathAPI.Controllers
                         periodEnd = startUtc.AddDays(365);
                     // else: one_time / lifetime => leave null
 
-                    var sub = new UserSubscription
+                    if (sub == null)
                     {
-                        UserID            = resolvedUserId.Value,
-                        CareerPathID      = careerId,
-                        Plan              = plan,      // "starter" | "pro" | "bonus"
-                        Billing           = billing,   // "monthly" | "yearly" | "one_time"
-                        StartAt           = startUtc,
-                        CurrentPeriodEnd  = periodEnd,
-                        LastTransactionId = tx.id,
-                        IsActive          = true,
-                        IsCanceled        = false,
-                    };
-                    _subs.UserSubscriptions.Add(sub);
-                    await _subs.SaveChangesAsync();
+                        sub = new UserSubscription
+                        {
+                            UserID            = resolvedUserId.Value,
+                            CareerPathID      = careerId,
+                            Plan              = plan,      // "starter" | "pro" | "bonus"
+                            Billing           = billing,   // "monthly" | "yearly" | "one_time"
+                            StartAt           = startUtc,
+                            CurrentPeriodEnd  = periodEnd,
+                            LastTransactionId = tx.id,
+                            IsActive          = true,
+                            IsCanceled        = false,
+                        };
+                        _subs.UserSubscriptions.Add(sub);
+                        _log.LogInformation("Creating sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
+                            resolvedUserId, careerId, tx.id, priceId, plan, billing);
+                    }
+                    else
+                    {
+                        // update/renew existing row
+                        sub.Plan              = plan;
+                        sub.Billing           = billing;
+                        sub.LastTransactionId = tx.id;
+                        sub.IsActive          = true;
+                        sub.IsCanceled        = false;
 
-                    _log.LogInformation("Provisioned sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
-                        resolvedUserId, careerId, tx.id, priceId, plan, billing);
-                }
-                else
-                {
-                    _log.LogInformation("Sub already exists (user={UserId}, career={CareerId}, txn={Txn})",
-                        resolvedUserId, careerId, tx.id);
+                        // If you want to extend period, update dates:
+                        sub.StartAt           = startUtc;
+                        sub.CurrentPeriodEnd  = periodEnd;
+
+                        _log.LogInformation("Updating sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
+                            resolvedUserId, careerId, tx.id, priceId, plan, billing);
+                    }
+
+                    try
+                    {
+                        await _subs.SaveChangesAsync();
+                    }
+                    catch (DbUpdateException dbex)
+                    {
+                        _log.LogError(dbex, "DB error saving subscription (user={UserId}, career={CareerId}). Inner={Inner}",
+                            resolvedUserId, careerId, dbex.InnerException?.Message);
+                        return (false, $"db_save_sub_failed: {dbex.InnerException?.Message ?? dbex.Message}");
+                    }
+
+                    // unlock user
+                    try
+                    {
+                        var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == resolvedUserId);
+                        if (user != null)
+                        {
+                            user.CareerPathID = careerId;
+                            if (user.CurrentDay <= 0) user.CurrentDay = 1;
+                            user.LastTaskDate = DateTime.UtcNow;
+                            user.LastActiveAt = DateTime.UtcNow;
+                            await _users.SaveChangesAsync();
+                        }
+                    }
+                    catch (DbUpdateException dbex2)
+                    {
+                        _log.LogError(dbex2, "DB error saving user unlock (user={UserId}). Inner={Inner}",
+                            resolvedUserId, dbex2.InnerException?.Message);
+                        return (false, $"db_save_user_failed: {dbex2.InnerException?.Message ?? dbex2.Message}");
+                    }
                 }
 
-                // unlock user
-                var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == resolvedUserId);
-                if (user != null)
-                {
-                    user.CareerPathID = careerId;
-                    if (user.CurrentDay <= 0) user.CurrentDay = 1;
-                    user.LastTaskDate = DateTime.UtcNow;
-                    user.LastActiveAt = DateTime.UtcNow;
-                    await _users.SaveChangesAsync();
-                }
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "ProcessTransactionAsync failed (txn={Txn})", tx.id);
+                return (false, ex.Message);
             }
         }
 
