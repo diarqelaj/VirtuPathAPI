@@ -254,133 +254,157 @@ namespace VirtuPathAPI.Controllers
 
         // ---------------- Core unlock logic (used by webhook, return, confirm) ----------------
         // Returns (success, reasonIfAny)
-        private async Task<(bool ok, string? reason)> ProcessTransactionAsync(Transaction tx)
+       // ---------------- Core unlock logic (used by webhook, return, confirm) ----------------
+// Returns (success, reasonIfAny)
+private async Task<(bool ok, string? reason)> ProcessTransactionAsync(Transaction tx)
+{
+    try
+    {
+        // Prefer custom_data from payload if present
+        CustomData? cd = null;
+        if (tx.custom_data is JsonElement ce && ce.ValueKind != JsonValueKind.Null)
         {
             try
             {
-                // Prefer custom_data from payload if present
-                CustomData? cd = null;
-                if (tx.custom_data is JsonElement ce && ce.ValueKind != JsonValueKind.Null)
-                {
-                    try
-                    {
-                        cd = JsonSerializer.Deserialize<CustomData>(ce.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogError(ex, "custom_data parse failed (txn={Txn})", tx.id);
-                    }
-                }
-
-                var itemsToProvision = await BuildProvisioningItemsAsync(cd, tx);
-                if (itemsToProvision.Count == 0)
-                {
-                    _log.LogWarning("No items to provision for txn {Txn}", tx.id);
-                    return (false, "no_items_to_provision");
-                }
-
-                var resolvedUserId = await ResolveUserIdAsync(cd, tx);
-                if (resolvedUserId == null)
-                {
-                    _log.LogWarning("Could not resolve user for txn {Txn}", tx.id);
-                    return (false, "user_not_resolved");
-                }
-
-                foreach (var it in itemsToProvision)
-                {
-                    var priceId  = it.PriceId;
-                    var careerId = it.Item.careerPathID;
-                    var plan     = it.Item.plan;
-                    var billing  = it.Item.billing;
-
-                    // UPSERT by (UserID, CareerPathID) to avoid unique constraint violations
-                    var sub = await _subs.UserSubscriptions
-                        .FirstOrDefaultAsync(s => s.UserID == resolvedUserId && s.CareerPathID == careerId);
-
-                    var startUtc = DateTime.UtcNow;
-                    DateTime? periodEnd = null;
-                    if (string.Equals(billing, "monthly", StringComparison.OrdinalIgnoreCase))
-                        periodEnd = startUtc.AddDays(30);
-                    else if (string.Equals(billing, "yearly", StringComparison.OrdinalIgnoreCase))
-                        periodEnd = startUtc.AddDays(365);
-                    // else: one_time / lifetime => leave null
-
-                    if (sub == null)
-                    {
-                        sub = new UserSubscription
-                        {
-                            UserID            = resolvedUserId.Value,
-                            CareerPathID      = careerId,
-                            Plan              = plan,      // "starter" | "pro" | "bonus"
-                            Billing           = billing,   // "monthly" | "yearly" | "one_time"
-                            StartAt           = startUtc,
-                            CurrentPeriodEnd  = periodEnd,
-                            LastTransactionId = tx.id,
-                            IsActive          = true,
-                            IsCanceled        = false,
-                        };
-                        _subs.UserSubscriptions.Add(sub);
-                        _log.LogInformation("Creating sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
-                            resolvedUserId, careerId, tx.id, priceId, plan, billing);
-                    }
-                    else
-                    {
-                        // update/renew existing row
-                        sub.Plan              = plan;
-                        sub.Billing           = billing;
-                        sub.LastTransactionId = tx.id;
-                        sub.IsActive          = true;
-                        sub.IsCanceled        = false;
-
-                        // If you want to extend period, update dates:
-                        sub.StartAt           = startUtc;
-                        sub.CurrentPeriodEnd  = periodEnd;
-
-                        _log.LogInformation("Updating sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
-                            resolvedUserId, careerId, tx.id, priceId, plan, billing);
-                    }
-
-                    try
-                    {
-                        await _subs.SaveChangesAsync();
-                    }
-                    catch (DbUpdateException dbex)
-                    {
-                        _log.LogError(dbex, "DB error saving subscription (user={UserId}, career={CareerId}). Inner={Inner}",
-                            resolvedUserId, careerId, dbex.InnerException?.Message);
-                        return (false, $"db_save_sub_failed: {dbex.InnerException?.Message ?? dbex.Message}");
-                    }
-
-                    // unlock user
-                    try
-                    {
-                        var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == resolvedUserId);
-                        if (user != null)
-                        {
-                            user.CareerPathID = careerId;
-                            if (user.CurrentDay <= 0) user.CurrentDay = 1;
-                            user.LastTaskDate = DateTime.UtcNow;
-                            user.LastActiveAt = DateTime.UtcNow;
-                            await _users.SaveChangesAsync();
-                        }
-                    }
-                    catch (DbUpdateException dbex2)
-                    {
-                        _log.LogError(dbex2, "DB error saving user unlock (user={UserId}). Inner={Inner}",
-                            resolvedUserId, dbex2.InnerException?.Message);
-                        return (false, $"db_save_user_failed: {dbex2.InnerException?.Message ?? dbex2.Message}");
-                    }
-                }
-
-                return (true, null);
+                cd = JsonSerializer.Deserialize<CustomData>(ce.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "ProcessTransactionAsync failed (txn={Txn})", tx.id);
-                return (false, ex.Message);
+                _log.LogError(ex, "custom_data parse failed (txn={Txn})", tx.id);
             }
         }
 
+        var itemsToProvision = await BuildProvisioningItemsAsync(cd, tx);
+        if (itemsToProvision.Count == 0)
+        {
+            _log.LogWarning("No items to provision for txn {Txn}", tx.id);
+            return (false, "no_items_to_provision");
+        }
+
+        var resolvedUserId = await ResolveUserIdAsync(cd, tx);
+        if (resolvedUserId == null)
+        {
+            _log.LogWarning("Could not resolve user for txn {Txn}", tx.id);
+            return (false, "user_not_resolved");
+        }
+
+        foreach (var it in itemsToProvision)
+        {
+            var priceId  = it.PriceId;
+            var careerId = it.Item.careerPathID;
+            var plan     = it.Item.plan;
+            var billing  = it.Item.billing;
+
+            // UPSERT by (UserID, CareerPathID) to avoid unique constraint violations
+            var sub = await _subs.UserSubscriptions
+                .FirstOrDefaultAsync(s => s.UserID == resolvedUserId && s.CareerPathID == careerId);
+
+            var startUtc = DateTime.UtcNow;
+
+            if (sub == null)
+            {
+                sub = new UserSubscription
+                {
+                    UserID            = resolvedUserId.Value,
+                    CareerPathID      = careerId,
+                    Plan              = plan,      // "starter" | "pro" | "bonus"
+                    Billing           = billing,   // "monthly" | "yearly" | "one_time"
+                    StartAt           = startUtc,
+                    // ⚠️ Do NOT set End/CurrentPeriodEnd here; DB computes it.
+                    LastTransactionId = tx.id,
+                    IsActive          = true,
+                    IsCanceled        = false,
+                };
+                _subs.UserSubscriptions.Add(sub);
+
+                // make sure EF doesn't think we set a computed end column
+                PreventModifyingComputedEndColumns(sub);
+
+                _log.LogInformation("Creating sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
+                    resolvedUserId, careerId, tx.id, priceId, plan, billing);
+            }
+            else
+            {
+                // update/renew existing row — but do NOT touch computed end columns
+                sub.Plan              = plan;
+                sub.Billing           = billing;
+                sub.LastTransactionId = tx.id;
+                sub.IsActive          = true;
+                sub.IsCanceled        = false;
+                sub.StartAt           = startUtc;
+
+                // make sure EF won’t try to update computed columns
+                PreventModifyingComputedEndColumns(sub);
+
+                _log.LogInformation("Updating sub (user={UserId}, career={CareerId}, txn={Txn}, price={PriceId}, plan={Plan}, billing={Billing})",
+                    resolvedUserId, careerId, tx.id, priceId, plan, billing);
+            }
+
+            try
+            {
+                await _subs.SaveChangesAsync();
+            }
+            catch (DbUpdateException dbex)
+            {
+                _log.LogError(dbex, "DB error saving subscription (user={UserId}, career={CareerId}). Inner={Inner}",
+                    resolvedUserId, careerId, dbex.InnerException?.Message);
+                return (false, $"db_save_sub_failed: {dbex.InnerException?.Message ?? dbex.Message}");
+            }
+
+            // unlock user
+            try
+            {
+                var user = await _users.Users.FirstOrDefaultAsync(u => u.UserID == resolvedUserId);
+                if (user != null)
+                {
+                    user.CareerPathID = careerId;
+                    if (user.CurrentDay <= 0) user.CurrentDay = 1;
+                    user.LastTaskDate = DateTime.UtcNow;
+                    user.LastActiveAt = DateTime.UtcNow;
+                    await _users.SaveChangesAsync();
+                }
+            }
+            catch (DbUpdateException dbex2)
+            {
+                _log.LogError(dbex2, "DB error saving user unlock (user={UserId}). Inner={Inner}",
+                    resolvedUserId, dbex2.InnerException?.Message);
+                return (false, $"db_save_user_failed: {dbex2.InnerException?.Message ?? dbex2.Message}");
+            }
+        }
+
+        return (true, null);
+    }
+    catch (Exception ex)
+    {
+        _log.LogError(ex, "ProcessTransactionAsync failed (txn={Txn})", tx.id);
+        return (false, ex.Message);
+    }
+}
+/// <summary>
+/// If the model has a computed end-date column (e.g., "EndDate" or "CurrentPeriodEnd"),
+/// tell EF not to send updates for it.
+/// </summary>
+private void PreventModifyingComputedEndColumns(UserSubscription sub)
+{
+    try
+    {
+        var entry = _subs.Entry(sub);
+
+        // try common names your model might use
+        var prop = entry.Properties.FirstOrDefault(p =>
+            string.Equals(p.Metadata.Name, "EndDate", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.Metadata.Name, "CurrentPeriodEnd", StringComparison.OrdinalIgnoreCase));
+
+        if (prop != null)
+        {
+            prop.IsModified = false;
+        }
+    }
+    catch
+    {
+        // best-effort only
+    }
+}
         // ---------- Build items to provision ----------
         private sealed record PriceMappedItem(CustomItem Item, string? PriceId);
 
