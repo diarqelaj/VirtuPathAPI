@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
-using BCrypt.Net;
 using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
@@ -16,26 +15,44 @@ using Microsoft.AspNetCore.DataProtection;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
+
 namespace VirtuPathAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-   public class UsersController : ControllerBase
-{
-    private readonly UserContext _context;
-    private static readonly HashSet<string> BannedIPs = new();
-    private readonly IDataProtector _protector;
-    private readonly Cloudinary _cloud;
-
-    // ⬇️ inject IDataProtectionProvider and use it
-    public UsersController(UserContext context, Cloudinary cloud, IDataProtectionProvider dataProtection)
+    public class UsersController : ControllerBase
     {
-        _context = context;
-        _cloud   = cloud;
-        _protector = dataProtection.CreateProtector("VirtuPath.Keys.UserPrivate.v1");
-    }
+        private readonly UserContext _context;
+        private readonly UserSubscriptionContext _subs;
+        private static readonly HashSet<string> BannedIPs = new();
+        private readonly IDataProtector _protector;
+        private readonly Cloudinary _cloud;
 
-        // Ban an IP address
+        public UsersController(
+            UserContext context,
+            Cloudinary cloud,
+            IDataProtectionProvider dataProtection,
+            UserSubscriptionContext subs)
+        {
+            _context   = context;
+            _cloud     = cloud;
+            _protector = dataProtection.CreateProtector("VirtuPath.Keys.UserPrivate.v1");
+            _subs      = subs;
+        }
+
+        public sealed class MySubSummaryDto
+        {
+            public int? CareerPathID { get; init; }
+            public string? Plan { get; init; }            // "starter" | "pro" | ...
+            public string? Billing { get; init; }         // "monthly" | "yearly" | "one_time"
+            public DateTime? StartAt { get; init; }
+            public DateTime? CurrentPeriodEnd { get; init; }
+            public string? LastTransactionId { get; init; }
+            public bool IsActive { get; init; }
+        }
+
+        // ===== IP ban =====
+
         [HttpPost("ban-ip")]
         public IActionResult BanIP([FromBody] BanIpRequest request)
         {
@@ -47,7 +64,6 @@ namespace VirtuPathAPI.Controllers
             return Ok(new { message = $"IP {request.Ip} has been banned." });
         }
 
-        // Unban an IP address
         [HttpPost("unban-ip")]
         public IActionResult UnbanIP([FromBody] BanIpRequest request)
         {
@@ -64,9 +80,10 @@ namespace VirtuPathAPI.Controllers
             return NotFound(new { error = $"IP {request.Ip} was not found in the ban list." });
         }
 
-        private bool IsIpBanned(string ip) => BannedIPs.Contains(ip);
+        private static bool IsIpBanned(string ip) => BannedIPs.Contains(ip);
 
-        // ✅ GET all users (admin/debug only)
+        // ===== Users =====
+
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetUsers()
         {
@@ -77,12 +94,11 @@ namespace VirtuPathAPI.Controllers
         public async Task<IActionResult> Login([FromBody] LoginRequest req)
         {
             var ipToCheck = !string.IsNullOrEmpty(req.ClientPublicIp)
-                            ? req.ClientPublicIp
-                            : HttpContext.Connection.RemoteIpAddress?.ToString();
-            if (ipToCheck == "::1") ipToCheck = "127.0.0.1";
+                ? req.ClientPublicIp
+                : HttpContext.Connection.RemoteIpAddress?.ToString();
 
-           
-            if (BannedIPs.Contains(ipToCheck))
+            if (ipToCheck == "::1") ipToCheck = "127.0.0.1";
+            if (IsIpBanned(ipToCheck))
                 return Forbid($"Access denied from IP {ipToCheck}");
 
             if (string.IsNullOrWhiteSpace(req.Identifier))
@@ -93,35 +109,20 @@ namespace VirtuPathAPI.Controllers
                 u.Email.ToLower() == identifier || u.Username.ToLower() == identifier);
 
             if (user == null)
-            {
-             
                 return Unauthorized(new { error = "User not found." });
-            }
 
-            // ✅ Password vs Google logic
-            if (req.IsGoogleLogin)
-            {
-                // Allow login regardless of PasswordHash (account may have set a password later)
-            
-            }
-            else
+            if (!req.IsGoogleLogin)
             {
                 if (string.IsNullOrWhiteSpace(req.Password))
-                {
-                 
                     return Unauthorized(new { error = "Password required for this account." });
-                }
 
                 if (string.IsNullOrEmpty(user.PasswordHash) ||
                     !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-                {
-                
                     return Unauthorized(new { error = "Invalid password." });
-                }
             }
+
             await EnsureUserCryptoAsync(user, allowServerPrivate: true);
 
-            // Persist IP + last active
             user.LastKnownIP = ipToCheck;
             user.LastActiveAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
@@ -141,8 +142,6 @@ namespace VirtuPathAPI.Controllers
                     Expires = DateTimeOffset.UtcNow.AddMonths(1),
                 });
             }
-          
-
 
             return Ok(new
             {
@@ -153,7 +152,6 @@ namespace VirtuPathAPI.Controllers
             });
         }
 
-        // ✅ GET user by ID
         [HttpGet("{id}")]
         public async Task<ActionResult<User>> GetUser(int id)
         {
@@ -162,102 +160,91 @@ namespace VirtuPathAPI.Controllers
             return user;
         }
 
-        private static readonly HashSet<string> ReservedUsernames = new HashSet<string>
+        private static readonly HashSet<string> ReservedUsernames = new()
         {
-            "admin", "root", "system", "api", "login", "logout", "signup", "me", "settings",
-            "dashboard", "virtu", "virtu-path-ai", "support", "terms", "privacy", "contact",
-            "about", "pricing", "reset", "user", "users", "security", "public", "private",
-            "team", "teams","virtupathai"," virtupathai.com","help", "faq"
+            "admin","root","system","api","login","logout","signup","me","settings",
+            "dashboard","virtu","virtu-path-ai","support","terms","privacy","contact",
+            "about","pricing","reset","user","users","security","public","private",
+            "team","teams","virtupathai","virtupathai.com","help","faq"
         };
 
-       [HttpPost]
-public async Task<IActionResult> CreateUser([FromBody] User incoming)
-{
-    if (incoming is null)
-        return BadRequest(new { error = "Missing request body." });
+        [HttpPost]
+        public async Task<IActionResult> CreateUser([FromBody] User incoming)
+        {
+            if (incoming is null)
+                return BadRequest(new { error = "Missing request body." });
 
-    // 1) Requireds
-    var username = incoming.Username?.Trim().ToLower();
-    var emailNorm = incoming.Email?.Trim().ToLower();
+            var username = incoming.Username?.Trim().ToLower();
+            var emailNorm = incoming.Email?.Trim().ToLower();
 
-    if (string.IsNullOrWhiteSpace(emailNorm) ||
-        string.IsNullOrWhiteSpace(incoming.PasswordHash) ||
-        string.IsNullOrWhiteSpace(username))
-    {
-        return BadRequest(new { error = "Email, password, and username are required." });
-    }
+            if (string.IsNullOrWhiteSpace(emailNorm) ||
+                string.IsNullOrWhiteSpace(incoming.PasswordHash) ||
+                string.IsNullOrWhiteSpace(username))
+            {
+                return BadRequest(new { error = "Email, password, and username are required." });
+            }
 
-    // 2) Reserved / profanity / format
-    if (ReservedUsernames.Contains(username))
-        return BadRequest(new { error = "This username is reserved. Please choose another." });
+            if (ReservedUsernames.Contains(username))
+                return BadRequest(new { error = "This username is reserved. Please choose another." });
 
-    foreach (var word in ProfanityList.Words)
-        if (username.Contains(word))
-            return BadRequest(new { error = "Username contains inappropriate content." });
+            foreach (var word in ProfanityList.Words)
+                if (username.Contains(word))
+                    return BadRequest(new { error = "Username contains inappropriate content." });
 
-    if (!Regex.IsMatch(username, @"^[a-z0-9_]{3,20}$"))
-        return BadRequest(new { error = "Username must be 3–20 chars, lowercase letters/numbers/underscores." });
+            if (!Regex.IsMatch(username, @"^[a-z0-9_]{3,20}$"))
+                return BadRequest(new { error = "Username must be 3–20 chars, lowercase letters/numbers/underscores." });
 
-    // 3) Uniqueness
-    if (await _context.Users.AnyAsync(u => u.Username == username))
-        return Conflict(new { error = "Username already taken" });
+            if (await _context.Users.AnyAsync(u => u.Username == username))
+                return Conflict(new { error = "Username already taken" });
 
-    if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailNorm))
-        return Conflict(new { error = "Email already in use" });
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == emailNorm))
+                return Conflict(new { error = "Email already in use" });
 
-    // 4) Build a fresh entity (never reuse the bound object)
-    var user = new User
-    {
-        UserID             = 0, // guard against explicit ID in payload
-        FullName           = incoming.FullName,
-        Username           = username,
-        Email              = emailNorm,
-        PasswordHash       = BCrypt.Net.BCrypt.HashPassword(incoming.PasswordHash),
-        RegistrationDate   = DateTime.UtcNow,
+            var user = new User
+            {
+                UserID = 0,
+                FullName = incoming.FullName,
+                Username = username,
+                Email = emailNorm,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(incoming.PasswordHash),
+                RegistrationDate = DateTime.UtcNow,
 
-        // optional prefs from client (defaults are false in the model)
-        ProductUpdates       = incoming.ProductUpdates,
-        CareerTips           = incoming.CareerTips,
-        NewCareerPathAlerts  = incoming.NewCareerPathAlerts,
-        Promotions           = incoming.Promotions,
-        IsProfilePrivate     = incoming.IsProfilePrivate,
+                ProductUpdates = incoming.ProductUpdates,
+                CareerTips = incoming.CareerTips,
+                NewCareerPathAlerts = incoming.NewCareerPathAlerts,
+                Promotions = incoming.Promotions,
+                IsProfilePrivate = incoming.IsProfilePrivate,
 
-        // safe defaults
-        IsVerified         = false,
-        IsOfficial         = false,
-        IsTwoFactorEnabled = false,
-        CurrentDay         = 0,
+                IsVerified = false,
+                IsOfficial = false,
+                IsTwoFactorEnabled = false,
+                CurrentDay = 0,
 
-        // clear server-managed fields
-        Bio                    = null,
-        About                  = null,
-        ProfilePictureUrl      = null,
-        ProfilePicturePublicId = null,
-        CoverImageUrl          = null,
-        CoverImagePublicId     = null,
-        PublicKeyJwk           = null,
-        X25519PublicJwk        = null,
-        KeyVault               = null, // IMPORTANT: avoid EF trying to insert principal twice
-    };
+                Bio = null,
+                About = null,
+                ProfilePictureUrl = null,
+                ProfilePicturePublicId = null,
+                CoverImageUrl = null,
+                CoverImagePublicId = null,
+                PublicKeyJwk = null,
+                X25519PublicJwk = null,
+                KeyVault = null,
+            };
 
-    // 5) Save once to get identity
-    _context.Users.Add(user);
-    await _context.SaveChangesAsync();   // user.UserID is now set
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
 
-    // 6) Best-effort crypto init; don't fail signup if it throws
-    try
-    {
-        await EnsureUserCryptoAsync(user, allowServerPrivate: true);
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[CreateUser] key provision failed for user {user.UserID}: {ex.Message}");
-        // Signup already succeeded; continue without blocking the response
-    }
+            try
+            {
+                await EnsureUserCryptoAsync(user, allowServerPrivate: true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CreateUser] key provision failed for user {user.UserID}: {ex.Message}");
+            }
 
-    return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
-}
-
+            return CreatedAtAction(nameof(GetUser), new { id = user.UserID }, user);
+        }
 
         [HttpGet("by-username/{username}")]
         public async Task<IActionResult> GetUserByUsername(string username)
@@ -265,7 +252,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
             if (string.IsNullOrWhiteSpace(username))
                 return BadRequest(new { error = "Username is required" });
 
-            string normalized = username.Trim().ToLower();
+            var normalized = username.Trim().ToLower();
 
             var user = await _context.Users
                 .Where(u => u.Username.ToLower() == normalized)
@@ -283,7 +270,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
                     u.IsVerified,
                     u.VerifiedDate,
                     u.IsOfficial,
-                    u.LastActiveAt  // Include LastActiveAt in that projection if needed
+                    u.LastActiveAt
                 })
                 .FirstOrDefaultAsync();
 
@@ -310,14 +297,13 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
                     u.IsVerified,
                     u.VerifiedDate,
                     u.IsOfficial,
-                    u.LastActiveAt  // Include LastActiveAt in search results if desired
+                    u.LastActiveAt
                 })
                 .ToListAsync();
 
             return Ok(matches);
         }
 
-        // ✅ PUT /api/users/{id} — Update existing user
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateUser(int id, User user)
         {
@@ -329,6 +315,8 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
             return NoContent();
         }
 
+        // ===== Images =====
+
         [HttpPost("upload-profile-picture")]
         public async Task<IActionResult> UploadProfilePicture([FromForm] IFormFile file, [FromForm] int userId)
         {
@@ -338,7 +326,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
                 return BadRequest("Image must be less than 5MB.");
 
             var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext     = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!allowed.Contains(ext))
                 return BadRequest("Only .jpg, .jpeg, .png, .webp allowed.");
 
@@ -353,74 +341,67 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
 
             if (ext != ".webp")
             {
-                // load + convert
                 await using var inStream = file.OpenReadStream();
-                using     var img      = Image.Load(inStream);
-                using     var ms       = new MemoryStream();
-                await     img.SaveAsync(ms, new WebpEncoder());
-                var bytes = ms.ToArray();
-
-                uploadStream   = new MemoryStream(bytes);
+                using var img = Image.Load(inStream);
+                using var ms = new MemoryStream();
+                await img.SaveAsync(ms, new WebpEncoder());
+                uploadStream = new MemoryStream(ms.ToArray());
                 uploadFileName = Path.GetFileNameWithoutExtension(file.FileName) + ".webp";
             }
             else
             {
-                uploadStream   = file.OpenReadStream();
+                uploadStream = file.OpenReadStream();
                 uploadFileName = file.FileName;
             }
 
             var uploadParams = new ImageUploadParams
             {
-                File           = new FileDescription(uploadFileName, uploadStream),
-                Folder         = "virtupath/users/profile",
-                Format         = "webp",
+                File = new FileDescription(uploadFileName, uploadStream),
+                Folder = "virtupath/users/profile",
+                Format = "webp",
                 Transformation = new Transformation()
                     .Width(512).Height(512).Crop("limit")
                     .Quality("auto")
             };
 
             var result = await _cloud.UploadAsync(uploadParams);
-
-            // clean up our stream
             uploadStream.Dispose();
 
             if (result.StatusCode != System.Net.HttpStatusCode.OK)
                 return StatusCode(500, "Cloudinary upload failed.");
 
-            user.ProfilePictureUrl      = result.SecureUrl.ToString();
+            user.ProfilePictureUrl = result.SecureUrl.ToString();
             user.ProfilePicturePublicId = result.PublicId;
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
             return Ok(new
             {
-                profilePictureUrl      = user.ProfilePictureUrl,
+                profilePictureUrl = user.ProfilePictureUrl,
                 profilePicturePublicId = user.ProfilePicturePublicId
             });
         }
 
+        [HttpDelete("delete-profile-picture")]
+        public async Task<IActionResult> DeleteProfilePicture([FromQuery] int userId)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return NotFound("User not found.");
 
-            [HttpDelete("delete-profile-picture")]
-            public async Task<IActionResult> DeleteProfilePicture([FromQuery] int userId)
+            if (!string.IsNullOrEmpty(user.ProfilePicturePublicId))
             {
-                var user = await _context.Users.FindAsync(userId);
-                if (user == null) return NotFound("User not found.");
-
-                if (!string.IsNullOrEmpty(user.ProfilePicturePublicId))
-                {
-                    await _cloud.DestroyAsync(new DeletionParams(user.ProfilePicturePublicId));
-                    user.ProfilePicturePublicId = null;
-                }
-
-                user.ProfilePictureUrl = null;
-                _context.Users.Update(user);
-                await _context.SaveChangesAsync();
-
-                return Ok(new { message = "Profile picture deleted." });
+                await _cloud.DestroyAsync(new DeletionParams(user.ProfilePicturePublicId));
+                user.ProfilePicturePublicId = null;
             }
 
+            user.ProfilePictureUrl = null;
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
 
-      [HttpPost("upload-cover")]
+            return Ok(new { message = "Profile picture deleted." });
+        }
+
+        [HttpPost("upload-cover")]
         public async Task<IActionResult> UploadCoverImage([FromForm] IFormFile file, [FromForm] int userId)
         {
             if (file == null || file.Length == 0)
@@ -429,7 +410,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
                 return BadRequest("Image must be less than 5MB.");
 
             var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext     = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!allowed.Contains(ext))
                 return BadRequest("Only .jpg, .jpeg, .png, .webp allowed.");
 
@@ -445,50 +426,47 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
             if (ext != ".webp")
             {
                 await using var inStream = file.OpenReadStream();
-                using     var img      = Image.Load(inStream);
-                using     var ms       = new MemoryStream();
-                await     img.SaveAsync(ms, new WebpEncoder());
-                var bytes = ms.ToArray();
-
-                uploadStream   = new MemoryStream(bytes);
+                using var img = Image.Load(inStream);
+                using var ms = new MemoryStream();
+                await img.SaveAsync(ms, new WebpEncoder());
+                uploadStream = new MemoryStream(ms.ToArray());
                 uploadFileName = Path.GetFileNameWithoutExtension(file.FileName) + ".webp";
             }
             else
             {
-                uploadStream   = file.OpenReadStream();
+                uploadStream = file.OpenReadStream();
                 uploadFileName = file.FileName;
             }
 
             var uploadParams = new ImageUploadParams
             {
-                File           = new FileDescription(uploadFileName, uploadStream),
-                Folder         = "virtupath/users/cover",
-                Format         = "webp",
+                File = new FileDescription(uploadFileName, uploadStream),
+                Folder = "virtupath/users/cover",
+                Format = "webp",
                 Transformation = new Transformation()
                     .Width(1280).Height(720).Crop("limit")
                     .Quality("auto")
             };
 
             var result = await _cloud.UploadAsync(uploadParams);
-
             uploadStream.Dispose();
 
             if (result.StatusCode != System.Net.HttpStatusCode.OK)
                 return StatusCode(500, "Cloudinary upload failed.");
 
-            user.CoverImageUrl      = result.SecureUrl.ToString();
+            user.CoverImageUrl = result.SecureUrl.ToString();
             user.CoverImagePublicId = result.PublicId;
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
             return Ok(new
             {
-                coverImageUrl      = user.CoverImageUrl,
+                coverImageUrl = user.CoverImageUrl,
                 coverImagePublicId = user.CoverImagePublicId
             });
         }
 
-       [HttpDelete("delete-cover-image")]
+        [HttpDelete("delete-cover-image")]
         public async Task<IActionResult> DeleteCoverImage([FromQuery] int userId)
         {
             var user = await _context.Users.FindAsync(userId);
@@ -507,6 +485,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
             return Ok(new { message = "Cover image deleted." });
         }
 
+        // ===== Profile text & privacy =====
 
         [HttpPost("bio")]
         public async Task<IActionResult> AddBio([FromBody] TextUpdateRequest req)
@@ -591,6 +570,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
 
             return Ok(new { message = $"Profile privacy {(req.IsPrivate ? "enabled" : "disabled")}.", isPrivate = user.IsProfilePrivate });
         }
+
         [HttpPut("{id}/profile")]
         public async Task<IActionResult> UpdateProfile(int id, [FromBody] UpdateProfileDto dto)
         {
@@ -606,6 +586,7 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
             return Ok();
         }
 
+        // ===== Notifications =====
 
         [HttpGet("notifications/{id}")]
         public async Task<IActionResult> GetNotificationSettings(int id)
@@ -638,54 +619,102 @@ public async Task<IActionResult> CreateUser([FromBody] User incoming)
             return Ok(new { message = "Notification settings updated." });
         }
 
+        // ===== Career path =====
+
         [HttpPost("set-career")]
-public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest request)
-{
-    var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-    if (user == null) return NotFound("User not found.");
+        public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest request)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            if (user == null) return NotFound("User not found.");
 
-    // Always set the career path. Only bump to day 1 if not started yet.
-    user.CareerPathID = request.CareerPathId;
-    if (user.CurrentDay <= 0) user.CurrentDay = 1;
-    user.LastTaskDate = DateTime.UtcNow;
+            user.CareerPathID = request.CareerPathId;
+            if (user.CurrentDay <= 0) user.CurrentDay = 1;
+            user.LastTaskDate = DateTime.UtcNow;
 
-    var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-    if (ip == "::1") ip = "127.0.0.1";
-    user.LastKnownIP = ip;
-    user.LastActiveAt = DateTime.UtcNow;
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+            if (ip == "::1") ip = "127.0.0.1";
+            user.LastKnownIP = ip;
+            user.LastActiveAt = DateTime.UtcNow;
 
-    await _context.SaveChangesAsync();
-    return Ok("Career path set.");
-}
+            await _context.SaveChangesAsync();
+            return Ok("Career path set.");
+        }
 
+        // ===== Subscriptions (current session) =====
 
-        // ✅ DELETE user (with cleanup of subscriptions)
+        [HttpGet("my-subscriptions")]
+        public async Task<IActionResult> MySubscriptions()
+        {
+            var userId = HttpContext.Session.GetInt32("UserID");
+            if (userId == null) return Unauthorized();
+
+            var today = DateTime.UtcNow.Date;
+
+            var list = await _subs.UserSubscriptions
+                .Where(s => s.UserID == userId)
+                .OrderByDescending(s => s.StartAt)
+                .Select(s => new {
+                    s.CareerPathID,
+                    s.Plan,
+                    s.Billing,
+                    s.StartAt,
+                    s.CurrentPeriodEnd,
+                    s.LastTransactionId,
+                    IsActive = s.CurrentPeriodEnd == null || s.CurrentPeriodEnd.Value.Date >= today
+                })
+                .ToListAsync();
+
+            return Ok(list);
+        }
+
+        [HttpGet("my-subscription/current")]
+        public async Task<IActionResult> MyCurrentSubscription()
+        {
+            var userId = HttpContext.Session.GetInt32("UserID");
+            if (userId == null) return Unauthorized();
+
+            var today = DateTime.UtcNow.Date;
+
+            var sub = await _subs.UserSubscriptions
+                .Where(s => s.UserID == userId)
+                .OrderByDescending(s => s.StartAt)
+                .Select(s => new MySubSummaryDto {
+                    CareerPathID     = s.CareerPathID,
+                    Plan             = s.Plan,
+                    Billing          = s.Billing,
+                    StartAt          = s.StartAt,
+                    CurrentPeriodEnd = s.CurrentPeriodEnd,
+                    LastTransactionId= s.LastTransactionId,
+                    IsActive         = (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd.Value.Date >= today)
+                })
+                .FirstOrDefaultAsync();
+
+            return Ok(sub);
+        }
+
+        // ===== Admin & maintenance =====
+
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id)
         {
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound();
 
-            // 1) Remove all subscriptions for this user
-            var subs = _context.UserSubscriptions.Where(s => s.UserID == id);
-            _context.UserSubscriptions.RemoveRange(subs);
+            var subs = _subs.UserSubscriptions.Where(s => s.UserID == id);
+            _subs.UserSubscriptions.RemoveRange(subs);
 
-            // 2) Remove all friendship records where this user is either follower or followed
             var friendships = _context.UserFriends
-                                      .Where(f => f.FollowerId == id || f.FollowedId == id);
+                .Where(f => f.FollowerId == id || f.FollowedId == id);
             _context.UserFriends.RemoveRange(friendships);
 
-            // 3) Remove all performance‐review records for this user
             var reviews = _context.PerformanceReviews.Where(r => r.UserID == id);
             _context.PerformanceReviews.RemoveRange(reviews);
 
-            // 4) Now that no FK rows remain, it’s safe to delete the user itself
             _context.Users.Remove(user);
 
             await _context.SaveChangesAsync();
             return NoContent();
         }
-
 
         [HttpPatch("2fa")]
         public async Task<IActionResult> SetTwoFactorCode([FromBody] TwoFactorRequest req)
@@ -717,17 +746,13 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
                 return Unauthorized(new { error = "User not found" });
 
             if (user.TwoFactorCode != req.Code || user.TwoFactorCodeExpiresAt < DateTime.UtcNow)
-            {
                 return Unauthorized(new { error = "Invalid or expired 2FA code" });
-            }
 
             HttpContext.Session.SetInt32("UserID", user.UserID);
 
             var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
             if (ip == "::1") ip = "127.0.0.1";
             user.LastKnownIP = ip;
-
-                      // Update “last active” timestamp on successful 2FA
             user.LastActiveAt = DateTime.UtcNow;
 
             user.TwoFactorCode = null;
@@ -752,26 +777,6 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             return Ok(new { userID = user.UserID });
         }
 
-        public class TextUpdateRequest
-        {
-            public int UserId { get; set; }
-            public string? Text { get; set; }
-        }
-
-        public class TwoFactorRequest
-        {
-            public string Identifier { get; set; }
-            public string Code { get; set; }
-            public DateTime ExpiresAt { get; set; } // ✅ used only when saving
-        }
-
-        public class VerifyTwoFactorRequest
-        {
-            public string Identifier { get; set; }
-            public string Code { get; set; }
-            public bool RememberMe { get; set; }
-        }
-
         [HttpPost("logout")]
         public IActionResult Logout()
         {
@@ -787,7 +792,6 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             return Ok();
         }
 
-        // ✅ GET /api/users/me — Get current session user
         [HttpGet("me")]
         public async Task<IActionResult> GetCurrentUser()
         {
@@ -807,7 +811,7 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             if (user == null) return NotFound();
 
             user.IsVerified = true;
-            user.VerifiedDate = DateTime.UtcNow; // ✅ also record the date
+            user.VerifiedDate = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             return Ok("User marked as verified.");
@@ -833,8 +837,6 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             if (user == null) return NotFound();
 
             user.IsOfficial = true;
-
-            // ✅ Also store verified date for official accounts
             user.VerifiedDate = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -849,41 +851,30 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
             if (user == null) return NotFound();
 
             user.IsOfficial = false;
-
-            // Optional: clear verified date too
             user.VerifiedDate = null;
 
             await _context.SaveChangesAsync();
 
             return Ok("Official badge removed.");
         }
-        // In VirtuPathAPI/Controllers/UsersController.cs
 
         [HttpGet("stats")]
         public async Task<IActionResult> GetAllUserStats()
         {
-            // 1) Load ALL users (no filtering, no pagination)
             var allUsers = await _context.Users.ToListAsync();
 
-            // 2) Load ALL accepted friendships into memory
             var allFriends = await _context.UserFriends
                 .Where(f => f.IsAccepted)
                 .ToListAsync();
 
-            // 3) Load ALL performance reviews into memory
             var allReviews = await _context.PerformanceReviews.ToListAsync();
 
-            // 4) Build a stats projection for each user, ensuring nobody is skipped
             var result = allUsers
                 .Select(u =>
                 {
-                    // Count how many accepted followers this user has:
                     int followersCount = allFriends.Count(f => f.FollowedId == u.UserID);
-
-                    // Count how many users *this* user is following (accepted):
                     int followingCount = allFriends.Count(f => f.FollowerId == u.UserID);
 
-                    // Find the most recent PerformanceReview for this user (by Year/Month/ReviewID)
                     var latestReview = allReviews
                         .Where(r => r.UserID == u.UserID)
                         .OrderByDescending(r => r.Year)
@@ -904,76 +895,78 @@ public async Task<IActionResult> SetCareerPath([FromBody] SetCareerRequest reque
                         LatestPerformanceScore = latestScore
                     };
                 })
-                .ToList(); // materialize the projection
+                .ToList();
 
-            // 5) Return all user‐stats in one JSON array
             return Ok(result);
         }
-      // base64url
-static string B64Url(byte[] bytes)
-{
-    return Convert.ToBase64String(bytes)
-        .TrimEnd('=').Replace('+','-').Replace('/','_');
-}
 
-// ----- PEM exporters -----
-static string ExportRsaPublicPem(RSA rsa)
-{
-    var pub = rsa.ExportSubjectPublicKeyInfo(); // PKCS#8 public
-    var b64 = Convert.ToBase64String(pub);
-    return $"-----BEGIN PUBLIC KEY-----\n{Chunk64(b64)}\n-----END PUBLIC KEY-----\n";
-}
-static string ExportRsaPrivatePkcs8Pem(RSA rsa)
-{
-    var pk = rsa.ExportPkcs8PrivateKey();
-    var b64 = Convert.ToBase64String(pk);
-    return $"-----BEGIN PRIVATE KEY-----\n{Chunk64(b64)}\n-----END PRIVATE KEY-----\n";
-}
-static string Chunk64(string s)
-{
-    var sb = new StringBuilder(s.Length + s.Length/64*2);
-    for (int i=0; i<s.Length; i+=64) sb.AppendLine(s.Substring(i, Math.Min(64, s.Length - i)));
-    return sb.ToString().TrimEnd();
-}
+        // ===== Helpers: crypto & utils =====
 
-// PUBLIC-ONLY RSA JWK
-static string BuildRsaPublicJwk(RSA rsa)
-{
-    var p = rsa.ExportParameters(false);
-    return System.Text.Json.JsonSerializer.Serialize(new {
-        kty = "RSA",
-        n   = B64Url(p.Modulus!),
-        e   = B64Url(p.Exponent!),
-        key_ops = new[] { "encrypt" }
-    });
-}
+        static string B64Url(byte[] bytes)
+        {
+            return Convert.ToBase64String(bytes)
+                .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        }
 
-// X25519 keypair (public JWK, private raw)
-static (string publicJwk, byte[] privRaw) GenerateX25519Pair()
-{
-    var gen = new X25519KeyPairGenerator();
-    gen.Init(new Org.BouncyCastle.Crypto.KeyGenerationParameters(new SecureRandom(), 255));
-    var kp = gen.GenerateKeyPair();
+        static string ExportRsaPublicPem(RSA rsa)
+        {
+            var pub = rsa.ExportSubjectPublicKeyInfo();
+            var b64 = Convert.ToBase64String(pub);
+            return $"-----BEGIN PUBLIC KEY-----\n{Chunk64(b64)}\n-----END PUBLIC KEY-----\n";
+        }
 
-    var priv = ((X25519PrivateKeyParameters)kp.Private).GetEncoded(); // 32 bytes
-    var pub  = ((X25519PublicKeyParameters) kp.Public).GetEncoded();  // 32 bytes
+        static string ExportRsaPrivatePkcs8Pem(RSA rsa)
+        {
+            var pk = rsa.ExportPkcs8PrivateKey();
+            var b64 = Convert.ToBase64String(pk);
+            return $"-----BEGIN PRIVATE KEY-----\n{Chunk64(b64)}\n-----END PRIVATE KEY-----\n";
+        }
 
-    var jwk = System.Text.Json.JsonSerializer.Serialize(new {
-        kty = "OKP",
-        crv = "X25519",
-        x   = B64Url(pub),
-        key_ops = new[] { "deriveKey" }
-    });
-    return (jwk, priv);
-}
+        static string Chunk64(string s)
+        {
+            var sb = new StringBuilder(s.Length + s.Length / 64 * 2);
+            for (int i = 0; i < s.Length; i += 64)
+                sb.AppendLine(s.Substring(i, Math.Min(64, s.Length - i)));
+            return sb.ToString().TrimEnd();
+        }
 
-// protect -> base64 string (so it fits nvarchar(max))
-string ProtectToB64(string plaintext)
-{
-    var bytes = Encoding.UTF8.GetBytes(plaintext);
-    var sealedBytes = _protector.Protect(bytes);
-    return Convert.ToBase64String(sealedBytes);
-}
+        static string BuildRsaPublicJwk(RSA rsa)
+        {
+            var p = rsa.ExportParameters(false);
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                kty = "RSA",
+                n = B64Url(p.Modulus!),
+                e = B64Url(p.Exponent!),
+                key_ops = new[] { "encrypt" }
+            });
+        }
+
+        static (string publicJwk, byte[] privRaw) GenerateX25519Pair()
+        {
+            var gen = new X25519KeyPairGenerator();
+            gen.Init(new Org.BouncyCastle.Crypto.KeyGenerationParameters(new SecureRandom(), 255));
+            var kp = gen.GenerateKeyPair();
+
+            var priv = ((X25519PrivateKeyParameters)kp.Private).GetEncoded();
+            var pub = ((X25519PublicKeyParameters)kp.Public).GetEncoded();
+
+            var jwk = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                kty = "OKP",
+                crv = "X25519",
+                x = B64Url(pub),
+                key_ops = new[] { "deriveKey" }
+            });
+            return (jwk, priv);
+        }
+
+        string ProtectToB64(string plaintext)
+        {
+            var bytes = Encoding.UTF8.GetBytes(plaintext);
+            var sealedBytes = _protector.Protect(bytes);
+            return Convert.ToBase64String(sealedBytes);
+        }
 
         [HttpGet("debug-all-users")]
         public async Task<IActionResult> DebugAllUsers()
@@ -986,7 +979,6 @@ string ProtectToB64(string plaintext)
             });
         }
 
-
         [HttpPost("change-password")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
         {
@@ -998,11 +990,9 @@ string ProtectToB64(string plaintext)
             if (user == null)
                 return Unauthorized(new { error = "User not found" });
 
-            // Verify old password
             if (!BCrypt.Net.BCrypt.Verify(req.OldPassword, user.PasswordHash))
                 return BadRequest(new { error = "Current password is incorrect" });
 
-            // Validate new password
             if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 8 ||
                 !Regex.IsMatch(req.NewPassword, @"[A-Z]") ||
                 !Regex.IsMatch(req.NewPassword, @"[0-9]") ||
@@ -1011,108 +1001,104 @@ string ProtectToB64(string plaintext)
                 return BadRequest(new { error = "Password must be 8+ characters with uppercase, number, and symbol" });
             }
 
-            // Save new password
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true });
         }
+
         [HttpPut("admin/{id}")]
         public async Task<IActionResult> AdminUpdateUser(int id, [FromBody] UpdateUserDto dto)
         {
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound();
 
-            // Overwrite only the fields admins can change:
             user.FullName = dto.FullName;
             user.Username = dto.Username.Trim().ToLower();
-            user.Email = dto.Email.Trim().ToLower();
+            user.Email    = dto.Email.Trim().ToLower();
             user.IsOfficial = dto.IsOfficial;
             user.IsVerified = dto.IsVerified;
 
-            // Optionally update VerifiedDate when toggling IsVerified:
             if (dto.IsVerified && user.VerifiedDate == null)
-            {
                 user.VerifiedDate = DateTime.UtcNow;
-            }
             else if (!dto.IsVerified)
-            {
                 user.VerifiedDate = null;
-            }
 
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
             return NoContent();
         }
-      private async Task EnsureUserCryptoAsync(User u, bool allowServerPrivate = true)
-{
-    if (_context.Entry(u).State == EntityState.Detached)
-    {
-        var tracked = await _context.Users.FindAsync(u.UserID);
-        if (tracked != null) u = tracked; else _context.Attach(u);
-    }
 
-    var vault = await _context.CobaltUserKeyVaults
-        .SingleOrDefaultAsync(v => v.UserId == u.UserID);
-
-    bool userChanged  = false;
-    bool vaultChanged = false;
-
-    if (string.IsNullOrEmpty(u.PublicKeyJwk))
-    {
-        using var rsa = RSA.Create(2048);
-        u.PublicKeyJwk = BuildRsaPublicJwk(rsa);
-        userChanged = true;
-
-        if (allowServerPrivate)
+        private async Task EnsureUserCryptoAsync(User u, bool allowServerPrivate = true)
         {
-            var pubPem  = ExportRsaPublicPem(rsa);
-            var privPem = ExportRsaPrivatePkcs8Pem(rsa);
-            var encPriv = ProtectToB64(privPem);
-
-            if (vault == null)
+            if (_context.Entry(u).State == EntityState.Detached)
             {
-                vault = new CobaltUserKeyVault
+                var tracked = await _context.Users.FindAsync(u.UserID);
+                if (tracked != null) u = tracked; else _context.Attach(u);
+            }
+
+            var vault = await _context.CobaltUserKeyVaults
+                .SingleOrDefaultAsync(v => v.UserId == u.UserID);
+
+            bool userChanged = false;
+            bool vaultChanged = false;
+
+            if (string.IsNullOrEmpty(u.PublicKeyJwk))
+            {
+                using var rsa = RSA.Create(2048);
+                u.PublicKeyJwk = BuildRsaPublicJwk(rsa);
+                userChanged = true;
+
+                if (allowServerPrivate)
                 {
-                    UserId        = u.UserID,
-                    PubKeyPem     = pubPem,
-                    EncPrivKeyPem = encPriv,
-                    CreatedAt     = DateTime.UtcNow,
-                    IsActive      = true
-                };
-                _context.CobaltUserKeyVaults.Add(vault);
-                vaultChanged = true;
+                    var pubPem = ExportRsaPublicPem(rsa);
+                    var privPem = ExportRsaPrivatePkcs8Pem(rsa);
+                    var encPriv = ProtectToB64(privPem);
+
+                    if (vault == null)
+                    {
+                        vault = new CobaltUserKeyVault
+                        {
+                            UserId = u.UserID,
+                            PubKeyPem = pubPem,
+                            EncPrivKeyPem = encPriv,
+                            CreatedAt = DateTime.UtcNow,
+                            IsActive = true
+                        };
+                        _context.CobaltUserKeyVaults.Add(vault);
+                        vaultChanged = true;
+                    }
+                    else
+                    {
+                        if (string.IsNullOrEmpty(vault.PubKeyPem)) { vault.PubKeyPem = pubPem; vaultChanged = true; }
+                        if (string.IsNullOrEmpty(vault.EncPrivKeyPem)) { vault.EncPrivKeyPem = encPriv; vaultChanged = true; }
+                    }
+                }
             }
-            else
-            {
-                if (string.IsNullOrEmpty(vault.PubKeyPem))     { vault.PubKeyPem = pubPem;     vaultChanged = true; }
-                if (string.IsNullOrEmpty(vault.EncPrivKeyPem)) { vault.EncPrivKeyPem = encPriv; vaultChanged = true; }
-            }
+
+            if (userChanged || vaultChanged)
+                await _context.SaveChangesAsync();
         }
-    }
 
-    if (userChanged || vaultChanged)
-        await _context.SaveChangesAsync();
-}
-
+        // ===== DTOs =====
 
         public class LoginRequest
         {
-            public string Identifier { get; set; } // email or username
+            public string Identifier { get; set; } = default!; // email or username
             public string? Password { get; set; }
             public bool RememberMe { get; set; }
-            public bool IsGoogleLogin { get; set; } // NEW
+            public bool IsGoogleLogin { get; set; }
 
             [JsonPropertyName("clientPublicIp")]
             public string? ClientPublicIp { get; set; }
         }
 
-        public class BanIpRequest { public string Ip { get; set; } }
+        public class BanIpRequest { public string Ip { get; set; } = default!; }
 
         public class ChangePasswordRequest
         {
-            public string OldPassword { get; set; }
-            public string NewPassword { get; set; }
+            public string OldPassword { get; set; } = default!;
+            public string NewPassword { get; set; } = default!;
         }
 
         public class PrivacyToggleRequest
@@ -1128,11 +1114,42 @@ string ProtectToB64(string plaintext)
             public bool NewCareerPathAlerts { get; set; }
             public bool Promotions { get; set; }
         }
+
         public record UpdateProfileDto(string FullName, string? Bio, string? About, bool IsProfilePrivate);
+
+        public class UpdateUserDto
+        {
+            public string FullName { get; set; } = default!;
+            public string Username { get; set; } = default!;
+            public string Email { get; set; } = default!;
+            public bool IsOfficial { get; set; }
+            public bool IsVerified { get; set; }
+        }
+
         public class SetCareerRequest
         {
-            public string Email { get; set; }
+            public string Email { get; set; } = default!;
             public int CareerPathId { get; set; }
+        }
+
+        public class TextUpdateRequest
+        {
+            public int UserId { get; set; }
+            public string? Text { get; set; }
+        }
+
+        public class TwoFactorRequest
+        {
+            public string Identifier { get; set; } = default!;
+            public string Code { get; set; } = default!;
+            public DateTime ExpiresAt { get; set; }
+        }
+
+        public class VerifyTwoFactorRequest
+        {
+            public string Identifier { get; set; } = default!;
+            public string Code { get; set; } = default!;
+            public bool RememberMe { get; set; }
         }
     }
 }
