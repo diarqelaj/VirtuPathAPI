@@ -115,7 +115,7 @@ builder.Services.AddDbContext<DailyQuoteContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<UserContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<UserSubscriptionContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<TaskCompletionContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDbContext<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
+builder.Services.AddDbContextPool<PerformanceReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CareerPathContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<BugReportContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<CommunityPostContext>(opt => opt.UseSqlServer(cs));
@@ -123,7 +123,10 @@ builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<DataProtectionKeyContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddScoped<VirtuPathAPI.Services.EntitlementService>();
 builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
-builder.Services.AddDataProtection();
+builder.Services
+    .AddDataProtection()
+    .SetApplicationName("VirtuPathAPI")
+    .PersistKeysToDbContext<DataProtectionKeyContext>();
 
 //────────────────────────────────────────────────────────────────────────────
 // 3) RSA KEYS & HYBRID ENCRYPTION

@@ -30,6 +30,9 @@ namespace VirtuPathAPI.Models
         // Navigation (optional)
         [ForeignKey(nameof(UserID))]
         public User? User { get; set; }
+        public DateTime CompletedAtUtc { get; set; }
+        [Column(TypeName = "date")]
+        public DateTime? CompletedLocalDate { get; set; } 
 
         [ForeignKey(nameof(TaskID))]
         public DailyTask? Task { get; set; }

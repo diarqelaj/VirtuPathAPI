@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VirtuPathAPI.Models;
+using System.Globalization;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -42,10 +43,15 @@ namespace VirtuPathAPI.Controllers
         }
 
         /// <summary>
-        /// Body must include: UserID, TaskID, CareerPathID, CareerDay, CompletionDate
+        /// Create a completion. 
+        /// Body must include: UserID, TaskID, CareerPathID, CareerDay. 
+        /// We IGNORE client-provided CompletionDate and compute server-side.
+        /// Optional: ?timeZone=Europe/Belgrade (defaults to Europe/Belgrade)
         /// </summary>
         [HttpPost]
-        public async Task<ActionResult<TaskCompletion>> CreateTaskCompletion([FromBody] TaskCompletion completion)
+        public async Task<ActionResult<TaskCompletion>> CreateTaskCompletion(
+            [FromBody] TaskCompletion completion,
+            [FromQuery] string? timeZone = "Europe/Belgrade")
         {
             if (completion == null) return BadRequest("Missing payload.");
             if (completion.UserID <= 0 || completion.TaskID <= 0 || completion.CareerPathID <= 0)
@@ -68,17 +74,33 @@ namespace VirtuPathAPI.Controllers
             if (already)
                 return Conflict("Task already marked as completed.");
 
-            // Save the new completion
+            // ---- NEW: set completion timestamps server-side (UTC + LocalDate) ----
+            TimeZoneInfo tz;
+            try { tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone ?? "Europe/Belgrade"); }
+            catch { return BadRequest("Invalid timeZone id."); }
+
+            var utcNow   = DateTime.UtcNow;
+            var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, tz);
+
+            completion.CompletedAtUtc     = utcNow;
+            completion.CompletedLocalDate = localNow.Date;
+
+            // Keep existing field populated for backward compatibility
+            // If your model's CompletionDate was intended as "when completed", populate it here:
+            completion.CompletionDate = localNow;
+
             _context.TaskCompletions.Add(completion);
             await _context.SaveChangesAsync();
 
             // Non-blocking: Update / upsert monthly performance review for this *careerPath*
             try
             {
-                int month = completion.CompletionDate.Month;
-                int year  = completion.CompletionDate.Year;
+                // Use the computed local date for month/year
+                int month = localNow.Month;
+                int year  = localNow.Year;
 
-                // Assigned tasks in this path (for naive score). If you'd rather use “assigned this month/day”, adjust here.
+                // NOTE: This "assigned" logic is naive (total tasks of the path).
+                // If you want "assigned this month", adjust accordingly.
                 int totalAssignedTasks = await _context.DailyTasks
                     .Where(t => t.CareerPathID == completion.CareerPathID)
                     .CountAsync();
@@ -156,6 +178,109 @@ namespace VirtuPathAPI.Controllers
             _context.TaskCompletions.Remove(completion);
             await _context.SaveChangesAsync();
             return NoContent();
+        }
+
+        // ---------------------------
+        // NEW: weekly progress by LOCAL calendar date (Mon..Sun)
+        // ---------------------------
+        [HttpGet("weekly-by-date")]
+        public async Task<IActionResult> WeeklyByDate(
+            [FromQuery] int userId,
+            [FromQuery] int careerPathId,
+            [FromQuery] string? timeZone = "Europe/Belgrade",
+            [FromQuery] DateTime? anchorLocalDate = null,
+            [FromQuery] bool mondayStart = true)
+        {
+            if (userId <= 0 || careerPathId <= 0) return BadRequest("Invalid ids.");
+
+            TimeZoneInfo tz;
+            try { tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone ?? "Europe/Belgrade"); }
+            catch { return BadRequest("Invalid timeZone id."); }
+
+            var utcNow     = DateTime.UtcNow;
+            var localNow   = TimeZoneInfo.ConvertTimeFromUtc(utcNow, tz);
+            var localAnchor = (anchorLocalDate ?? localNow.Date).Date;
+
+            int dow = (int)localAnchor.DayOfWeek; // Sunday=0 ... Saturday=6
+            int offset = mondayStart
+                ? (dow == 0 ? -6 : 1 - dow)   // back to Monday
+                : -dow;                        // back to Sunday
+
+            var start = localAnchor.AddDays(offset);
+            var dates = Enumerable.Range(0, 7).Select(i => start.AddDays(i).Date).ToArray();
+
+            var minDate = dates.First();
+            var maxDate = dates.Last();
+
+            // Load completions for this week
+            var completions = await _context.TaskCompletions.AsNoTracking()
+                .Where(c => c.UserID == userId
+                         && c.CareerPathID == careerPathId
+                         && c.CompletedLocalDate != null
+                         && c.CompletedLocalDate >= minDate
+                         && c.CompletedLocalDate <= maxDate)
+                .Select(c => new
+                {
+                    c.CompletedLocalDate,
+                    c.CareerDay
+                })
+                .ToListAsync();
+
+            // Totals per CareerDay (how many tasks exist in that day)
+            var distinctDays = completions.Select(c => c.CareerDay).Distinct().ToArray();
+            var totals = await _context.DailyTasks.AsNoTracking()
+                .Where(t => t.CareerPathID == careerPathId && distinctDays.Contains(t.Day))
+                .GroupBy(t => t.Day)
+                .Select(g => new { Day = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Day, x => x.Count);
+
+            var result = new List<object>(7);
+            foreach (var d in dates)
+            {
+                var compsForDate = completions.Where(c => c.CompletedLocalDate == d).ToList();
+                var completedCount = compsForDate.Count;
+
+                int totalForDate = compsForDate
+                    .Select(c => c.CareerDay)
+                    .Distinct()
+                    .Sum(cd => totals.TryGetValue(cd, out var cnt) ? cnt : 0);
+
+                result.Add(new
+                {
+                    localDate = d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    completed = completedCount,
+                    total = totalForDate
+                });
+            }
+
+            return Ok(result);
+        }
+
+        // ---------------------------
+        // NEW: small summary your UI expects (daysCompleted, totalDays)
+        // ---------------------------
+        [HttpGet("summary")]
+        public async Task<IActionResult> Summary(
+            [FromQuery] int userId,
+            [FromQuery] int careerPathId)
+        {
+            if (userId <= 0 || careerPathId <= 0) return BadRequest("Invalid ids.");
+
+            // Distinct CareerDays with at least one completion for this path/user
+            var daysCompleted = await _context.TaskCompletions.AsNoTracking()
+                .Where(c => c.UserID == userId && c.CareerPathID == careerPathId)
+                .Select(c => c.CareerDay)
+                .Distinct()
+                .CountAsync();
+
+            // Total days in this path (max Day in DailyTasks for the path)
+            var totalDays = await _context.DailyTasks.AsNoTracking()
+                .Where(t => t.CareerPathID == careerPathId)
+                .Select(t => (int?)t.Day)
+                .DefaultIfEmpty(0)
+                .MaxAsync();
+
+            return Ok(new { daysCompleted, totalDays });
         }
     }
 }

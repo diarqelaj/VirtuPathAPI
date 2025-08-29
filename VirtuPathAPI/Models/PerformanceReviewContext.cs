@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using VirtuPathAPI.Models;
 
 namespace VirtuPathAPI.Models
 {
@@ -10,13 +9,19 @@ namespace VirtuPathAPI.Models
 
         public DbSet<PerformanceReview> PerformanceReviews { get; set; }
 
-        // ✅ Add these two lines
+        // These let the controller read everything it needs
         public DbSet<DailyTask> DailyTasks { get; set; }
         public DbSet<TaskCompletion> TaskCompletions { get; set; }
         public DbSet<User> Users { get; set; }
 
-
-
-
+        // OPTIONAL: lock table names if your tables aren’t the default plural forms
+        // protected override void OnModelCreating(ModelBuilder b)
+        // {
+        //     b.Entity<User>().ToTable("Users");
+        //     b.Entity<DailyTask>().ToTable("DailyTasks");
+        //     b.Entity<TaskCompletion>().ToTable("TaskCompletions");
+        //     b.Entity<PerformanceReview>().ToTable("PerformanceReviews");
+        //     base.OnModelCreating(b);
+        // }
     }
 }

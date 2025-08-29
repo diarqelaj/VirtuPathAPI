@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace VirtuPathAPI.Controllers
 {
@@ -159,6 +160,218 @@ namespace VirtuPathAPI.Controllers
                 performanceScore
             });
         }
+        // GET: api/PerformanceReviews/progress/weekly-breakdown?userId=1&day=10&careerPathId=123
+[HttpGet("progress/weekly-breakdown")]
+public async Task<IActionResult> GetWeeklyBreakdown(
+    [FromQuery] int userId,
+    [FromQuery] int day,
+    [FromQuery] int? careerPathId)
+{
+    // 0) Resolve user & career path (consistent with your other methods)
+    var user = await _context.Users.FindAsync(userId);
+    if (user == null) return NotFound("User not found.");
+
+    var cp = careerPathId ?? user.CareerPathID;
+    if (cp == null) return BadRequest("No careerPathId provided and user has no CareerPath assigned.");
+    int cpId = cp.Value;
+
+    // 1) Compute week window by career day (e.g., days 8..14 if day=10)
+    int weekStart = ((day - 1) / 7) * 7 + 1;
+    int weekEnd   = weekStart + 6;
+
+    // 2) Pull all tasks for this path in the week
+    var weekTasks = await _context.DailyTasks
+        .Where(dt => dt.CareerPathID == cpId && dt.Day >= weekStart && dt.Day <= weekEnd)
+        .Select(dt => new { dt.TaskID, dt.Day })
+        .ToListAsync();
+
+    var weekTaskIds = weekTasks.Select(t => t.TaskID).ToList();
+
+    // 3) Pull user completions for ONLY those tasks (any time in the past)
+    var completedIds = await _context.TaskCompletions
+        .Where(tc => tc.UserID == userId && weekTaskIds.Contains(tc.TaskID))
+        .Select(tc => tc.TaskID)
+        .Distinct()
+        .ToListAsync();
+
+    // 4) Aggregate per day (assigned count; completed count)
+    var byDay = weekTasks
+        .GroupBy(t => t.Day)
+        .Select(g => new
+        {
+            Day = g.Key,
+            Assigned = g.Count(),
+            Completed = g.Count(t => completedIds.Contains(t.TaskID))
+        })
+        .OrderBy(x => x.Day)
+        .ToList();
+
+    // Ensure 7 rows even if no tasks exist some days
+    var result = Enumerable.Range(0, 7)
+        .Select(i => {
+            int d = weekStart + i;
+            var row = byDay.FirstOrDefault(x => x.Day == d);
+            return new
+            {
+                careerDay = d,
+                assigned  = row?.Assigned  ?? 0,
+                completed = row?.Completed ?? 0
+            };
+        })
+        .ToList();
+
+    return Ok(new {
+        userId,
+        careerPathId = cpId,
+        weekStart,
+        weekEnd,
+        days = result   // length 7, ordered by careerDay
+    });
+}
+    [HttpGet("progress/weekly-by-calendar")]
+public async Task<IActionResult> GetWeeklyByCalendar(
+    [FromQuery] int? userId,
+    [FromQuery] int? careerPathId,
+    [FromQuery] string? timeZone = "Europe/Belgrade",
+    [FromQuery] bool mondayStart = true)
+{
+    // 1) Try resolve userId from session/claims if not provided
+    int? resolvedUserId = userId;
+    if (resolvedUserId is null or <= 0)
+    {
+        var sessionUid = HttpContext.Session.GetInt32("UserID");
+        if (sessionUid.HasValue) resolvedUserId = sessionUid.Value;
+        else if (User?.Identity?.IsAuthenticated == true)
+        {
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                     ?? User.FindFirst("sub")?.Value;
+            if (int.TryParse(claim, out var fromClaim)) resolvedUserId = fromClaim;
+        }
+    }
+
+    // 2) Try load user if we have an id
+    User? user = null;
+    if (resolvedUserId is > 0)
+    {
+        user = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserID == resolvedUserId.Value);
+    }
+
+    // 3) Resolve career path:
+    //    - prefer explicit query
+    //    - otherwise user’s current career path
+    //    - if neither exist -> 400
+    int? cp = careerPathId ?? user?.CareerPathID;
+    if (cp == null)
+        return BadRequest("No careerPathId provided and user has no CareerPath assigned.");
+    int cpId = cp.Value;
+
+    // 4) If we still have no valid user, don't hard-fail: continue with 0 completions
+    var uid = resolvedUserId ?? 0;
+
+    // 5) Timezone resolution (safe)
+    TimeZoneInfo tz;
+    try
+    {
+        tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone ?? "Europe/Belgrade");
+    }
+    catch
+    {
+        tz = TimeZoneInfo.Utc;
+    }
+    var nowLocal = TimeZoneInfo.ConvertTime(DateTime.UtcNow, tz);
+
+    // 6) Start of week (local)
+    int dow = (int)nowLocal.DayOfWeek; // 0=Sun..6=Sat
+    int offsetToMon = mondayStart ? (dow == 0 ? -6 : 1 - dow) : -dow;
+    var weekStartLocal = nowLocal.Date.AddDays(offsetToMon);
+    var daysLocal = Enumerable.Range(0, 7)
+        .Select(i => weekStartLocal.AddDays(i).Date)
+        .ToList();
+
+    // 7) Preload assigned counts per careerDay
+    var tasksByDay = await _context.DailyTasks
+    .AsNoTracking()
+    .Where(dt => dt.CareerPathID == cpId)
+    .GroupBy(dt => dt.Day)
+    .Select(g => new { Day = g.Key, Count = g.Count() })
+    .ToDictionaryAsync(x => x.Day, x => x.Count);
+
+
+    // 8) Pull completions for the local week window (only if we have a user)
+    var weekStartUtc = TimeZoneInfo.ConvertTimeToUtc(weekStartLocal, tz);
+    var weekEndUtc   = TimeZoneInfo.ConvertTimeToUtc(weekStartLocal.AddDays(7), tz);
+
+    List<CompletionLite> completions = (uid > 0)
+    ? await _context.TaskCompletions
+        .Where(tc => tc.UserID == uid && tc.CareerPathID == cpId
+                     && tc.CompletionDate >= weekStartUtc
+                     && tc.CompletionDate <  weekEndUtc)
+        .Select(tc => new CompletionLite
+        {
+            TaskID = tc.TaskID,
+            CareerDay = tc.CareerDay,
+            CompletionDate = tc.CompletionDate
+        })
+        .AsNoTracking()
+        .ToListAsync()
+    : new List<CompletionLite>();
+
+
+    var completionsByLocalDate = completions
+        .GroupBy(c => TimeZoneInfo.ConvertTime(c.CompletionDate, tz).Date)
+        .ToDictionary(g => g.Key, g => g.ToList());
+
+    // 9) Baseline career day at week start:
+    //    - if we saw any completions in this week -> min CareerDay
+    //    - else, approximate by the *latest* completion in the past (if any)
+    //      so we don’t default to Day 1 forever.
+   int baselineDay = completions.Any() ? completions.Min(c => c.CareerDay) : 1;
+
+    if (completions.Any())
+    {
+        baselineDay = completions.Min(c => (int)c.CareerDay);
+    }
+    else if (uid > 0)
+    {
+        var last = await _context.TaskCompletions
+            .Where(tc => tc.UserID == uid && tc.CareerPathID == cpId)
+            .OrderByDescending(tc => tc.CompletionDate)
+            .Select(tc => tc.CareerDay)
+            .FirstOrDefaultAsync();
+
+        if (last > 0) baselineDay = last; // stay on last known career day
+    }
+
+    // 10) Build rows with 50% advance rule
+    var result = new List<object>(7);
+    int currentCareerDay = baselineDay;
+
+    foreach (var localDate in daysLocal)
+    {
+        int assigned = tasksByDay.TryGetValue(currentCareerDay, out var cnt) ? cnt : 0;
+
+        int completed = 0;
+        if (completionsByLocalDate.TryGetValue(localDate, out var list))
+            completed = list.Count(c => c.CareerDay == currentCareerDay);
+
+        result.Add(new
+        {
+            localDate = localDate.ToString("yyyy-MM-dd"),
+            careerDay = currentCareerDay,
+            assigned,
+            completed
+        });
+
+        // advance only if ≥50% complete
+        if (assigned > 0 && completed * 2 >= assigned)
+            currentCareerDay += 1;
+    }
+
+    return Ok(result);
+}
+
+
 
 
 
@@ -436,5 +649,11 @@ public async Task<IActionResult> GetAllTimeProgress(
 
             return Ok(review);
         }
+        internal sealed class CompletionLite
+    {
+        public int TaskID { get; set; }
+        public int CareerDay { get; set; }
+        public DateTime CompletionDate { get; set; }
+    }
     }
 }
