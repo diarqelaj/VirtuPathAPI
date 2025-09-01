@@ -6,6 +6,7 @@
 [Vv]irtuPathAPI/obj/
 ProjectEvaluation/
 VirtuPathAPI/v17/
+VirtuPathAPI/v17/.suo/
 
 # User-specific files
 *.suo
@@ -16,6 +17,8 @@ VirtuPathAPI/v17/
 # IDE directories
 .vs/
 .vscode/
+.v17/
+.vs/
 
 # Logs
 *.log
@@ -23,6 +26,7 @@ VirtuPathAPI/v17/
 # Environment files
 .env
 .env.*
+
 
 # Data & keys
 *.sqlite
@@ -112,3 +116,9 @@ StyleCopReport.xml
 *.code-workspace
 /VirtuPathAPI/bin/
 /VirtuPathAPI/obj/
+VirtuPathAPI/bin/Debug/net6.0/VirtuPathAPI.pdb
+/VirtuPathAPI/bin/Debug/net6.0
+/v17/
+.vs/VirtuPathAPI/v17/.suo
+/.vs/VirtuPathAPI/v17
+.vs\VirtuPathAPI\v17\.suo
