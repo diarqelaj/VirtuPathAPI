@@ -1,4 +1,30 @@
+# Build results
+/VirtuPathAPI/bin/
 /VirtuPathAPI/obj/
-/VirtuPathAPI/obj/
+/VirtuPathAPI/v17/
+/ProjectEvaluation/
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Logs
+*.log
+
+# Environment files
 .env
-.env*
+.env.*
+
+# Data
+*.sqlite
+
+# Package directories
+packages/
+*.tar.gz
+*.deb
+
+# Visual Studio Code
+.vscode/

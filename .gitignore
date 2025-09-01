@@ -1,0 +1,40 @@
+.vs/ProjectEvaluation/virtupathapi.metadata.v5.1
+.vs/ProjectEvaluation/virtupathapi.metadata.v5.1
+.vs/ProjectEvaluation/virtupathapi.metadata.v5.1
+.vs/ProjectEvaluation/virtupathapi.projects.v5.1
+.vs/VirtuPathAPI/FileContentIndex/08a88db8-f96f-4cdd-98a1-725c1b173836.vsidx
+.vs/VirtuPathAPI/FileContentIndex/1951fa2c-8120-47b8-aa2a-2e6e46e859d3.vsidx
+.vs/VirtuPathAPI/FileContentIndex/12e55b16-5305-47ee-aee5-84125c0c9d52.vsidx
+.vs/VirtuPathAPI/FileContentIndex/1951fa2c-8120-47b8-aa2a-2e6e46e859d3.vsidx
+.vs/VirtuPathAPI/FileContentIndex/1d0dcbe3-8d88-49cc-9b4e-2058ef6f0791.vsidx
+.vs/VirtuPathAPI/FileContentIndex/35e8afca-2e16-44d2-a178-b270b529e56c.vsidx
+# Build results
+/VirtuPathAPI/bin/
+/VirtuPathAPI/obj/
+/VirtuPathAPI/v17/
+/ProjectEvaluation/
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# Data
+*.sqlite
+
+# Package directories
+packages/
+*.tar.gz
+*.deb
+
+# Visual Studio Code
+.vscode/
