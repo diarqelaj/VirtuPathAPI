@@ -110,3 +110,7 @@ StyleCopReport.xml
 # VS Code
 .history/
 *.code-workspace
+/VirtuPathAPI/bin/
+/VirtuPathAPI/obj/
+VirtuPathAPI/bin/Debug/net6.0/VirtuPathAPI.pdb
+/VirtuPathAPI/bin/Debug/net6.0

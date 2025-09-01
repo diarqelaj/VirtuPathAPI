@@ -110,3 +110,5 @@ StyleCopReport.xml
 # VS Code
 .history/
 *.code-workspace
+/VirtuPathAPI/bin/
+/VirtuPathAPI/obj/
