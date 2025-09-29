@@ -26,8 +26,21 @@ using VirtuPathAPI.Utilities;
 using VirtuPathAPI.Config;
 using VirtuPathAPI.Services;
 using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
+
+
+builder.Services.AddSingleton<IMongoClient>(_ =>
+    new MongoClient(builder.Configuration["Mongo:ConnectionString"]));
+
+builder.Services.AddSingleton<IMongoDatabase>(sp =>
+{
+    var client = sp.GetRequiredService<IMongoClient>();
+    return client.GetDatabase(builder.Configuration["Mongo:Database"]);
+});
 
 //────────────────────────────────────────────────────────────────────────────
 // 0) CONFIG / ENV / CORS
@@ -122,7 +135,6 @@ builder.Services.AddDbContext<CommunityPostContext>(opt => opt.UseSqlServer(cs))
 builder.Services.AddDbContext<ChatContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddDbContext<DataProtectionKeyContext>(opt => opt.UseSqlServer(cs));
 builder.Services.AddScoped<VirtuPathAPI.Services.EntitlementService>();
-builder.Services.AddDbContext<ReviewContext>(opt => opt.UseSqlServer(cs));
 builder.Services
     .AddDataProtection()
     .SetApplicationName("VirtuPathAPI")
@@ -148,6 +160,9 @@ builder.Services.AddSingleton<RSA>(sp =>
     rsa.ImportFromPem(vault.EncPrivKeyPem);
     return rsa;
 });
+// ─ MongoDB (Atlas)
+
+
 
 //────────────────────────────────────────────────────────────────────────────
 // 4) SIGNALR PRESENCE
@@ -179,6 +194,12 @@ else
         Console.WriteLine("CLOUDINARY_URL missing or invalid – continuing without Cloudinary.");
     }
 }
+// Mongo singletons (already added above)
+// ...
+
+// ✅ Register repository for DI
+builder.Services.AddScoped<VirtuPathAPI.Data.IFeedbackRepository,
+                           VirtuPathAPI.Data.MongoFeedbackRepository>();
 
 //────────────────────────────────────────────────────────────────────────────
 // 6) SESSION & AUTHENTICATION
